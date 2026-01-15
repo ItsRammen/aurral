@@ -11,8 +11,11 @@ services:
       - PORT=3001
       - LIDARR_URL=${LIDARR_URL:-http://lidarr:8686}
       - LIDARR_API_KEY=${LIDARR_API_KEY}
+      - LASTFM_API_KEY=${LASTFM_API_KEY}
       - CONTACT_EMAIL=${CONTACT_EMAIL:-user@example.com}
       - DEBUG=${DEBUG:-false}
+    volumes:
+      - ./backend/db.json:/app/db.json
     networks:
       - aurral-network
     healthcheck:
