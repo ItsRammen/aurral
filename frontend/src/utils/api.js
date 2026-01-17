@@ -100,6 +100,23 @@ export const getLidarrMetadataProfiles = async () => {
   return response.data;
 };
 
+export const getLidarrAlbums = async (artistId) => {
+  const response = await api.get("/lidarr/albums", {
+    params: { artistId },
+  });
+  return response.data;
+};
+
+export const updateLidarrAlbum = async (id, data) => {
+  const response = await api.put(`/lidarr/albums/${id}`, data);
+  return response.data;
+};
+
+export const searchLidarrAlbum = async (albumIds) => {
+  const response = await api.post("/lidarr/command/albumsearch", { albumIds });
+  return response.data;
+};
+
 export const getRequests = async () => {
   const response = await api.get("/requests");
   return response.data;

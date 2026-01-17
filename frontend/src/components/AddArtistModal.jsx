@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+
 import { X, Loader, CheckCircle, AlertCircle } from "lucide-react";
 import {
   getLidarrRootFolders,
@@ -21,8 +22,17 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
   const [selectedQualityProfile, setSelectedQualityProfile] = useState("");
   const [selectedMetadataProfile, setSelectedMetadataProfile] = useState("");
   const [monitored, setMonitored] = useState(true);
+  const [monitorOption, setMonitorOption] = useState("all");
   const [searchForMissingAlbums, setSearchForMissingAlbums] = useState(false);
   const [albumFolders, setAlbumFolders] = useState(true);
+
+  useEffect(() => {
+    // Disable background scroll when modal is open
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "unset";
+    };
+  }, []);
 
   useEffect(() => {
     const fetchOptions = async () => {
@@ -89,6 +99,7 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
         metadataProfileId: parseInt(selectedMetadataProfile),
         rootFolderPath: selectedRootFolder,
         monitored,
+        monitor: monitorOption,
         searchForMissingAlbums,
         albumFolders,
       });
@@ -239,6 +250,27 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
                     </p>
                   </div>
                 </div>
+
+                {monitored && (
+                    <div className="ml-8 mb-4">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        Monitor Option
+                      </label>
+                      <select
+                        value={monitorOption}
+                        onChange={(e) => setMonitorOption(e.target.value)}
+                        className="input text-sm"
+                        disabled={submitting}
+                      >
+                         <option value="all">All Albums</option>
+                         <option value="future">Future Albums</option>
+                         <option value="missing">Missing Albums</option>
+                         <option value="latest">Latest Album</option>
+                         <option value="first">First Album</option>
+                         <option value="none">None (Artist Only)</option>
+                      </select>
+                    </div>
+                )}
 
                 <div className="flex items-start">
                   <div className="flex items-center h-5">

@@ -571,6 +571,7 @@ app.post("/api/lidarr/artists", async (req, res) => {
       albumFolder: useAlbumFolders,
       addOptions: {
         searchForMissingAlbums: searchMissing,
+        monitor: req.body.monitor || "all", // "all", "none", "future", "missing", "latest", "first"
       },
     };
 
@@ -709,6 +710,56 @@ app.get("/api/lidarr/metadataprofile", async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: "Failed to fetch metadata profiles",
+      message: error.message,
+    });
+  }
+});
+
+app.get("/api/lidarr/albums", async (req, res) => {
+  try {
+    const { artistId } = req.query;
+    if (!artistId) {
+      return res.status(400).json({ error: "artistId parameter is required" });
+    }
+    const albums = await lidarrRequest(`/album?artistId=${artistId}`);
+    res.json(albums);
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to fetch albums from Lidarr",
+      message: error.message,
+    });
+  }
+});
+
+app.put("/api/lidarr/albums/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await lidarrRequest(`/album/${id}`, "PUT", req.body);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to update album in Lidarr",
+      message: error.message,
+    });
+  }
+});
+
+app.post("/api/lidarr/command/albumsearch", async (req, res) => {
+  try {
+    const { albumIds } = req.body;
+    if (!albumIds || !Array.isArray(albumIds)) {
+      return res
+        .status(400)
+        .json({ error: "albumIds array is required" });
+    }
+    const result = await lidarrRequest("/command", "POST", {
+      name: "AlbumSearch",
+      albumIds,
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({
+      error: "Failed to trigger album search",
       message: error.message,
     });
   }

@@ -15,6 +15,9 @@ import {
   getArtistDetails,
   getArtistCover,
   lookupArtistInLidarr,
+  getLidarrAlbums,
+  updateLidarrAlbum,
+  searchLidarrAlbum,
 } from "../utils/api";
 import { useToast } from "../contexts/ToastContext";
 import AddArtistModal from "../components/AddArtistModal";
@@ -24,11 +27,14 @@ function ArtistDetailsPage() {
   const navigate = useNavigate();
   const [artist, setArtist] = useState(null);
   const [coverImages, setCoverImages] = useState([]);
+  const [lidarrArtist, setLidarrArtist] = useState(null);
+  const [lidarrAlbums, setLidarrAlbums] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [existsInLidarr, setExistsInLidarr] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
-  const { showSuccess } = useToast();
+  const [requestingAlbum, setRequestingAlbum] = useState(null);
+  const { showSuccess, showError } = useToast();
 
   useEffect(() => {
     const fetchArtistData = async () => {
@@ -48,9 +54,29 @@ function ArtistDetailsPage() {
           console.log("No cover art available");
         }
 
-        try {
-          const lookup = await lookupArtistInLidarr(mbid);
-          setExistsInLidarr(lookup.exists);
+          try {
+            const lookup = await lookupArtistInLidarr(mbid);
+            setExistsInLidarr(lookup.exists);
+            if (lookup.exists && lookup.artist) {
+              setLidarrArtist(lookup.artist);
+              // Wait a moment for Lidarr to process metadata if just added
+              setTimeout(async () => {
+                try {
+                  const albums = await getLidarrAlbums(lookup.artist.id);
+                  console.log("Lidarr Albums:", albums); // DEBUG
+                  setLidarrAlbums(albums);
+                } catch (err) {
+                   // Retry once if failed immediately
+                   console.log("Retrying album fetch...");
+                   setTimeout(async () => {
+                      try {
+                        const albums = await getLidarrAlbums(lookup.artist.id);
+                        setLidarrAlbums(albums);
+                      } catch (e) {}
+                   }, 2000);
+                }
+              }, 1000);
+            }
         } catch (err) {
           console.error("Failed to lookup artist in Lidarr:", err);
         }
@@ -70,10 +96,85 @@ function ArtistDetailsPage() {
     setShowAddModal(true);
   };
 
-  const handleAddSuccess = (artist) => {
+  const handleAddSuccess = async (addedArtist) => {
     setExistsInLidarr(true);
     setShowAddModal(false);
-    showSuccess(`Successfully added ${artist.name} to Lidarr!`);
+    showSuccess(`Successfully added ${addedArtist.name} to Lidarr!`);
+    
+    // Allow Lidarr some time to fetch metadata
+    setTimeout(async () => {
+        try {
+        const lookup = await lookupArtistInLidarr(mbid);
+        if (lookup.exists && lookup.artist) {
+            setLidarrArtist(lookup.artist);
+            const albums = await getLidarrAlbums(lookup.artist.id);
+            setLidarrAlbums(albums);
+        }
+        } catch (err) {
+        console.error("Failed to refresh Lidarr data", err);
+        }
+    }, 1500);
+  };
+
+
+  const handleRequestAlbum = async (albumId, title) => {
+    setRequestingAlbum(albumId);
+    try {
+      // Get the Lidarr album ID
+      const lidarrAlbum = lidarrAlbums.find(
+        (a) => a.foreignAlbumId === albumId
+      );
+      
+      if (!lidarrAlbum) {
+        throw new Error("Album not found in Lidarr");
+      }
+
+      // Update monitored status
+      await updateLidarrAlbum(lidarrAlbum.id, {
+        ...lidarrAlbum,
+        monitored: true,
+      });
+
+      // Trigger search
+      await searchLidarrAlbum([lidarrAlbum.id]);
+
+      // Update local state
+      setLidarrAlbums((prev) =>
+        prev.map((a) =>
+          a.id === lidarrAlbum.id ? { ...a, monitored: true } : a
+        )
+      );
+
+      showSuccess(`Requested album: ${title}`);
+    } catch (err) {
+      showError(`Failed to request album: ${err.message}`);
+    } finally {
+      setRequestingAlbum(null);
+    }
+  };
+
+  const getAlbumStatus = (releaseGroupId) => {
+    if (!existsInLidarr || lidarrAlbums.length === 0) return null;
+
+    const album = lidarrAlbums.find(
+      (a) => a.foreignAlbumId === releaseGroupId
+    );
+
+    if (!album) {
+      // Album not found in Lidarr's list.
+      // Lidarr might have it under a different release group ID or it's genuinely missing.
+      // But if we've fetched the artist from Lidarr, we should have their albums.
+      return null;
+    }
+
+    if (album.monitored) {
+      if (album.statistics?.percentOfTracks === 100) {
+        return { status: "available", label: "Available" };
+      }
+      return { status: "processing", label: "Processing" };
+    }
+
+    return { status: "unmonitored", label: "Not Monitored" };
   };
 
   const handleModalClose = () => {
@@ -297,44 +398,92 @@ function ArtistDetailsPage() {
                 const dateB = b["first-release-date"] || "";
                 return dateB.localeCompare(dateA);
               })
-              .map((releaseGroup) => (
-                <div
-                  key={releaseGroup.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-                >
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-                      {releaseGroup.title}
-                    </h3>
-                    <div className="flex items-center gap-3 mt-1 text-sm text-gray-600 dark:text-gray-400">
-                      {releaseGroup["first-release-date"] && (
-                        <span>
-                          {releaseGroup["first-release-date"].split("-")[0]}
-                        </span>
-                      )}
-                      {releaseGroup["primary-type"] && (
-                        <span className="badge badge-primary text-xs">
-                          {releaseGroup["primary-type"]}
-                        </span>
-                      )}
-                      {releaseGroup["secondary-types"] &&
-                        releaseGroup["secondary-types"].length > 0 && (
-                          <span className="badge bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs">
-                            {releaseGroup["secondary-types"].join(", ")}
+              .map((releaseGroup) => {
+                const status = getAlbumStatus(releaseGroup.id);
+                return (
+                  <div
+                    key={releaseGroup.id}
+                    className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                  >
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                        {releaseGroup.title}
+                      </h3>
+                      <div className="flex items-center gap-3 mt-1 text-sm text-gray-600 dark:text-gray-400">
+                        {releaseGroup["first-release-date"] && (
+                          <span>
+                            {releaseGroup["first-release-date"].split("-")[0]}
                           </span>
                         )}
+                        {releaseGroup["primary-type"] && (
+                          <span className="badge badge-primary text-xs">
+                            {releaseGroup["primary-type"]}
+                          </span>
+                        )}
+                        {releaseGroup["secondary-types"] &&
+                          releaseGroup["secondary-types"].length > 0 && (
+                            <span className="badge bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs">
+                              {releaseGroup["secondary-types"].join(", ")}
+                            </span>
+                          )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {status ? (
+                        status.status === "available" ? (
+                          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default">
+                            <CheckCircle className="w-3.5 h-3.5" />
+                            Available
+                          </span>
+                        ) : status.status === "processing" ? (
+                          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 cursor-default">
+                            <Loader className="w-3.5 h-3.5 animate-spin" />
+                            Processing
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() =>
+                              handleRequestAlbum(
+                                releaseGroup.id,
+                                releaseGroup.title
+                              )
+                            }
+                            disabled={requestingAlbum === releaseGroup.id}
+                            className="btn btn-primary btn-sm"
+                          >
+                            {requestingAlbum === releaseGroup.id ? (
+                              <Loader className="w-4 h-4 animate-spin" />
+                            ) : (
+                              "Request"
+                            )}
+                          </button>
+                        )
+                      ) : existsInLidarr ? (
+                        // If it's in Lidarr's list but we failed to match it above (unlikely if logic is correct),
+                        // or if it's genuinely not in Lidarr's database for this artist.
+                        // We can't request it if we don't have a Lidarr ID for it.
+                         <span className="text-xs text-gray-400 italic">
+                           Not in Lidarr
+                         </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">
+                          Add Artist First
+                        </span>
+                      )}
+
+                      <a
+                        href={`https://musicbrainz.org/release-group/${releaseGroup.id}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-secondary btn-sm ml-2"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
                     </div>
                   </div>
-                  <a
-                    href={`https://musicbrainz.org/release-group/${releaseGroup.id}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="btn btn-secondary btn-sm ml-4"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                  </a>
-                </div>
-              ))}
+                );
+              })}
           </div>
         </div>
       )}
