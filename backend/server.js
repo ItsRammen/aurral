@@ -829,7 +829,7 @@ const updateDiscoveryCache = async () => {
       .map((t) => t[0]);
     discoveryCache.topGenres = Array.from(genreCounts.entries())
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 12)
+      .slice(0, 24)
       .map((t) => t[0]);
 
     console.log(

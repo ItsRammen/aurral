@@ -116,8 +116,12 @@ function DiscoverPage() {
     const sections = [];
     const usedArtistIds = new Set();
 
-    // Iterate through all top genres to find distinct sections
-    for (const genre of data.topGenres) {
+    // Create a shuffled copy of top genres to ensure variety in sections
+    // This prevents showing the same top 4 genres every time
+    const shuffledGenres = [...data.topGenres].sort(() => 0.5 - Math.random());
+
+    // Iterate through shuffled genres to find distinct sections
+    for (const genre of shuffledGenres) {
       // Stop if we have enough sections
       if (sections.length >= 4) break;
 
