@@ -30,10 +30,11 @@ const GENRE_KEYWORDS = [
   "reggae",
   "disco",
   "funk",
-;
+];
+
 const defaultData = {
   discovery: {
-    recommendations: [,
+    recommendations: [],
     globalTop: [],
     basedOn: [],
     topTags: [],
@@ -269,7 +270,7 @@ const getArtistImage = async (mbid) => {
   if (!mbid) return { url: null, images: [] };
 
   if (db.data.images[mbid]) {
-    if (db.data.images[mbid === "NOT_FOUND") {
+    if (db.data.images[mbid] === "NOT_FOUND") {
       return { url: null, images: [] };
     }
     return {
@@ -301,7 +302,7 @@ const getArtistImage = async (mbid) => {
             .filter(
               (img) =>
                 img["#text"] &&
-                !img["#text".includes("2a96cbd8b46e442fc41c2b86b821562f"),
+                !img["#text"].includes("2a96cbd8b46e442fc41c2b86b821562f"),
             )
             .map((img) => ({
               image: img["#text"],
@@ -325,7 +326,7 @@ const getArtistImage = async (mbid) => {
             db.data.images[mbid] = images[0].image;
             await db.write();
 
-            return { url: images[0.image, images };
+            return { url: images[0].image, images };
           }
         }
       } catch (e) {}
@@ -588,7 +589,7 @@ app.post("/api/lidarr/artists", async (req, res) => {
       (r) => r.mbid === foreignArtistId,
     );
     if (existingIdx > -1) {
-      db.data.requests[existingIdx = {
+      db.data.requests[existingIdx] = {
         ...db.data.requests[existingIdx],
         ...newRequest,
       };
@@ -854,7 +855,7 @@ const updateDiscoveryCache = async () => {
                   a.image.find((img) => img.size === "large");
                 if (
                   i &&
-                  i["#text" &&
+                  i["#text"] &&
                   !i["#text"].includes("2a96cbd8b46e442fc41c2b86b821562f")
                 )
                   img = i["#text"];
@@ -873,7 +874,7 @@ const updateDiscoveryCache = async () => {
     }
 
     const recSampleSize = Math.min(25, lidarrArtists.length);
-    const recSample = [...lidarrArtists
+    const recSample = [...lidarrArtists]
       .sort(() => 0.5 - Math.random())
       .slice(0, recSampleSize);
     const recommendations = new Map();
@@ -993,7 +994,7 @@ const updateDiscoveryCache = async () => {
                 recommendations.set(f.id, {
                   id: f.id,
                   name: f.name,
-                  sortName: f["sort-name",
+                  sortName: f["sort-name"],
                   type: f.type,
                   relationType: "Similar Style",
                   sourceArtist: artist.artistName,
@@ -1039,7 +1040,7 @@ const updateDiscoveryCache = async () => {
     const allToHydrate = [
       ...(discoveryCache.globalTop || []),
       ...recommendationsArray,
-    .filter((a) => !a.image);
+    ].filter((a) => !a.image);
     console.log(`Hydrating images for ${allToHydrate.length} artists...`);
     for (const item of allToHydrate) {
       try {
