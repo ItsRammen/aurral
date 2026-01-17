@@ -16,6 +16,7 @@ import {
   getArtistCover,
   lookupArtistInLidarr,
 } from "../utils/api";
+import { useToast } from "../contexts/ToastContext";
 import AddArtistModal from "../components/AddArtistModal";
 
 function ArtistDetailsPage() {
@@ -27,6 +28,7 @@ function ArtistDetailsPage() {
   const [error, setError] = useState(null);
   const [existsInLidarr, setExistsInLidarr] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const { showSuccess } = useToast();
 
   useEffect(() => {
     const fetchArtistData = async () => {
@@ -71,7 +73,7 @@ function ArtistDetailsPage() {
   const handleAddSuccess = (artist) => {
     setExistsInLidarr(true);
     setShowAddModal(false);
-    alert(`Successfully added ${artist.name} to Lidarr!`);
+    showSuccess(`Successfully added ${artist.name} to Lidarr!`);
   };
 
   const handleModalClose = () => {

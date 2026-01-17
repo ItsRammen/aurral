@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { getLidarrArtists, deleteArtistFromLidarr } from "../utils/api";
 import ArtistImage from "../components/ArtistImage";
+import { useToast } from "../contexts/ToastContext";
 
 function LibraryPage() {
   const [artists, setArtists] = useState([]);
@@ -19,6 +20,7 @@ function LibraryPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
 
   const fetchArtists = async () => {
     setLoading(true);
@@ -50,9 +52,9 @@ function LibraryPage() {
     try {
       await deleteArtistFromLidarr(artist.id, false);
       setArtists((prev) => prev.filter((a) => a.id !== artist.id));
-      alert(`Successfully removed ${artist.artistName} from Lidarr`);
+      showSuccess(`Successfully removed ${artist.artistName} from Lidarr`);
     } catch (err) {
-      alert(
+      showError(
         `Failed to delete artist: ${err.response?.data?.message || err.message}`,
       );
     } finally {

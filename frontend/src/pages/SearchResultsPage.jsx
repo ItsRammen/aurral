@@ -9,6 +9,7 @@ import {
 } from "../utils/api";
 import AddArtistModal from "../components/AddArtistModal";
 import ArtistImage from "../components/ArtistImage";
+import { useToast } from "../contexts/ToastContext";
 
 function SearchResultsPage() {
   const [searchParams] = useSearchParams();
@@ -21,6 +22,7 @@ function SearchResultsPage() {
   const [artistToAdd, setArtistToAdd] = useState(null);
   const [artistImages, setArtistImages] = useState({});
   const navigate = useNavigate();
+  const { showSuccess } = useToast();
 
   useEffect(() => {
     const performSearch = async () => {
@@ -86,12 +88,14 @@ function SearchResultsPage() {
   const handleAddSuccess = (artist) => {
     setExistingArtists((prev) => ({
       ...prev,
+
       [artist.id]: true,
     }));
 
     setArtistToAdd(null);
 
-    alert(`Successfully added ${artist.name} to Lidarr!`);
+
+    showSuccess(`Successfully added ${artist.name} to Lidarr!`);
   };
 
   const handleModalClose = () => {
@@ -199,6 +203,7 @@ function SearchResultsPage() {
                         {artist["sort-name"] &&
                           artist["sort-name"] !== artist.name && (
                             <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+
                               {artist["sort-name"]}
                             </p>
                           )}
@@ -217,6 +222,7 @@ function SearchResultsPage() {
                         )}
 
                         {artist["life-span"] &&
+
                           formatLifeSpan(artist["life-span"]) && (
                             <div className="flex items-center text-sm text-gray-600 dark:text-gray-300 min-w-0">
                               <span className="font-medium mr-2 text-gray-700 dark:text-gray-400 flex-shrink-0">

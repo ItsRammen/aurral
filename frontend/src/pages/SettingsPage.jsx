@@ -20,6 +20,7 @@ import api, {
   getAppSettings,
   updateAppSettings,
 } from "../utils/api";
+import { useToast } from "../contexts/ToastContext";
 
 function SettingsPage() {
   const [health, setHealth] = useState(null);
@@ -30,6 +31,7 @@ function SettingsPage() {
   const [refreshingDiscovery, setRefreshingDiscovery] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
   const [saving, setSaving] = useState(false);
+  const { showSuccess, showError, showInfo } = useToast();
 
   const [settings, setSettings] = useState({
     rootFolderPath: "",
@@ -75,9 +77,9 @@ function SettingsPage() {
     setSaving(true);
     try {
       await updateAppSettings(settings);
-      alert("Default settings saved successfully!");
+      showSuccess("Default settings saved successfully!");
     } catch (err) {
-      alert("Failed to save settings: " + err.message);
+      showError("Failed to save settings: " + err.message);
     } finally {
       setSaving(false);
     }
@@ -88,13 +90,13 @@ function SettingsPage() {
     setRefreshingDiscovery(true);
     try {
       await api.post("/discover/refresh");
-      alert(
+      showInfo(
         "Discovery refresh started in background. This may take a few minutes to fully hydrate images.",
       );
       const healthData = await checkHealth();
       setHealth(healthData);
     } catch (err) {
-      alert(
+      showError(
         "Failed to start refresh: " +
           (err.response?.data?.message || err.message),
       );
@@ -113,11 +115,11 @@ function SettingsPage() {
     setClearingCache(true);
     try {
       await api.post("/discover/clear");
-      alert("Cache cleared successfully.");
+      showSuccess("Cache cleared successfully.");
       const healthData = await checkHealth();
       setHealth(healthData);
     } catch (err) {
-      alert(
+      showError(
         "Failed to clear cache: " +
           (err.response?.data?.message || err.message),
       );

@@ -14,6 +14,7 @@ import ArtistDetailsPage from "./pages/ArtistDetailsPage";
 import RequestsPage from "./pages/RequestsPage";
 import { checkHealth } from "./utils/api";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { ToastProvider } from "./contexts/ToastContext";
 
 function App() {
   const [isHealthy, setIsHealthy] = useState(null);
@@ -39,7 +40,8 @@ function App() {
 
   return (
     <ThemeProvider>
-      <Router>
+      <ToastProvider>
+        <Router>
         <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured}>
           {isHealthy === false && (
             <div className="mb-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-500/20 rounded-xl p-4">
@@ -96,8 +98,10 @@ function App() {
           </Routes>
         </Layout>
       </Router>
+      </ToastProvider>
     </ThemeProvider>
   );
+
 }
 
 export default App;

@@ -19,6 +19,7 @@ import {
   getRequests,
   getRecentlyAdded,
 } from "../utils/api";
+import { useToast } from "../contexts/ToastContext";
 import AddArtistModal from "../components/AddArtistModal";
 import ArtistImage from "../components/ArtistImage";
 
@@ -31,6 +32,7 @@ function DiscoverPage() {
   const [existingArtists, setExistingArtists] = useState({});
   const [artistToAdd, setArtistToAdd] = useState(null);
   const navigate = useNavigate();
+  const { showSuccess } = useToast();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -88,7 +90,7 @@ function DiscoverPage() {
     setArtistToAdd(null);
     // Refresh requests
     getRequests().then(setRequests).catch(console.error);
-    alert(`Successfully added ${artist.name} to Lidarr!`);
+    showSuccess(`Successfully added ${artist.name} to Lidarr!`);
   };
 
   const getLidarrArtistImage = (artist) => {

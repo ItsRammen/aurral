@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { getRequests, deleteRequest } from "../utils/api";
 import ArtistImage from "../components/ArtistImage";
+import { useToast } from "../contexts/ToastContext";
 
 function RequestsPage() {
   const [requests, setRequests] = useState([]);
@@ -20,6 +21,7 @@ function RequestsPage() {
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
+  const { showError } = useToast();
 
   const fetchRequests = async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true);
@@ -52,7 +54,7 @@ function RequestsPage() {
         await deleteRequest(mbid);
         setRequests((prev) => prev.filter((r) => r.mbid !== mbid));
       } catch (err) {
-        alert("Failed to delete request");
+        showError("Failed to delete request");
       }
     }
   };
