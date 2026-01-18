@@ -14,6 +14,7 @@ services:
       - LASTFM_API_KEY=${LASTFM_API_KEY}
       - CONTACT_EMAIL=${CONTACT_EMAIL:-user@example.com}
       - DEBUG=${DEBUG:-false}
+      - AUTH_PASSWORD=${AUTH_PASSWORD}
     volumes:
       - ./backend/data:/app/data
     networks:
