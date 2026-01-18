@@ -10,13 +10,16 @@ import {
   Menu,
   X,
   History,
+  LogOut,
 } from "lucide-react";
 import { useTheme } from "../contexts/ThemeContext";
+import { useAuth } from "../contexts/AuthContext";
 
 function Sidebar({ isHealthy, lidarrConfigured, lidarrStatus }) {
   const [isOpen, setIsOpen] = useState(false);
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
+  const { authRequired, logout } = useAuth();
 
   useEffect(() => {
     setIsOpen(false);
@@ -147,6 +150,16 @@ function Sidebar({ isHealthy, lidarrConfigured, lidarrStatus }) {
                 </>
               )}
             </button>
+            
+            {authRequired && (
+              <button
+                onClick={logout}
+                className="flex items-center justify-center w-full px-4 py-2 space-x-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors shadow-sm"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Logout</span>
+              </button>
+            )}
           </div>
         </div>
       </aside>

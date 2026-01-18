@@ -1,4 +1,5 @@
 import express from "express";
+import basicAuth from "express-basic-auth";
 import cors from "cors";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
@@ -92,6 +93,19 @@ const getCachedLidarrArtists = async (forceRefresh = false) => {
 app.use(cors());
 app.use(helmet());
 app.use(express.json());
+
+if (process.env.AUTH_PASSWORD) {
+  const adminUser = process.env.AUTH_USER || "admin";
+  const auth = basicAuth({
+    users: { [adminUser]: process.env.AUTH_PASSWORD },
+    challenge: false,
+  });
+
+  app.use((req, res, next) => {
+    if (req.path === "/api/health") return next();
+    return auth(req, res, next);
+  });
+}
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -254,6 +268,8 @@ app.get("/api/health", async (req, res) => {
         ? Object.keys(db.data.images).length
         : 0,
     },
+    authRequired: !!process.env.AUTH_PASSWORD,
+    authUser: process.env.AUTH_USER || "admin",
     timestamp: new Date().toISOString(),
   });
 });

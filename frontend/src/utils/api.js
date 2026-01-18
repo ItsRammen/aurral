@@ -13,8 +13,10 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     const password = localStorage.getItem("auth_password");
+    const username = localStorage.getItem("auth_user") || "admin";
     if (password) {
-      config.headers["x-auth-password"] = password;
+      const token = btoa(`${username}:${password}`);
+      config.headers["Authorization"] = `Basic ${token}`;
     }
     return config;
   },
@@ -172,6 +174,24 @@ export const searchArtistsByTag = async (tag, limit = 20) => {
     params: { tag, limit },
   });
   return response.data;
+};
+
+export const verifyCredentials = async (password, username = "admin") => {
+  const token = btoa(`${username}:${password}`);
+  try {
+    // Try to access a protected endpoint
+    await api.get("/settings", {
+      headers: {
+        Authorization: `Basic ${token}`,
+      },
+    });
+    return true;
+  } catch (error) {
+    if (error.response && error.response.status === 401) {
+      return false;
+    }
+    throw error;
+  }
 };
 
 export const getAppSettings = async () => {

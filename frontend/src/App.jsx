@@ -12,16 +12,39 @@ import LibraryPage from "./pages/LibraryPage";
 import SettingsPage from "./pages/SettingsPage";
 import ArtistDetailsPage from "./pages/ArtistDetailsPage";
 import RequestsPage from "./pages/RequestsPage";
+import Login from "./pages/Login";
 import { checkHealth } from "./utils/api";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ToastProvider } from "./contexts/ToastContext";
+import { AuthProvider, useAuth } from "./contexts/AuthContext";
 
-function App() {
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, isLoading, authRequired } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+      </div>
+    );
+  }
+
+  if (authRequired && !isAuthenticated) {
+    return <Login />;
+  }
+
+  return children;
+};
+
+function AppContent() {
   const [isHealthy, setIsHealthy] = useState(null);
   const [lidarrConfigured, setLidarrConfigured] = useState(false);
   const [lidarrStatus, setLidarrStatus] = useState("unknown");
+  const { isAuthenticated, authRequired } = useAuth();
 
   useEffect(() => {
+    // Only check health if we don't need auth OR if we are authenticated
+    // But since /api/health is public, we can always check it.
     const checkApiHealth = async () => {
       try {
         const health = await checkHealth();
@@ -39,12 +62,11 @@ function App() {
     // 30 sec
     const interval = setInterval(checkApiHealth, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isAuthenticated]);
 
   return (
-    <ThemeProvider>
-      <ToastProvider>
         <Router>
+      <ProtectedRoute>
         <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
           {isHealthy === false && (
             <div className="mb-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-500/20 rounded-xl p-4">
@@ -100,11 +122,21 @@ function App() {
             <Route path="/settings" element={<SettingsPage />} />
           </Routes>
         </Layout>
-      </Router>
+      </ProtectedRoute>
+    </Router>
+  );
+}
+
+function App() {
+  return (
+    <ThemeProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <AppContent />
+        </AuthProvider>
       </ToastProvider>
     </ThemeProvider>
   );
-
 }
 
 export default App;
