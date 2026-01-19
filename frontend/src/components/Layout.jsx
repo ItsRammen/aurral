@@ -1,11 +1,17 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Search } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { Search, Menu } from "lucide-react";
 import Sidebar from "./Sidebar";
 
 function Layout({ children, isHealthy, lidarrConfigured, lidarrStatus }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -16,11 +22,25 @@ function Layout({ children, isHealthy, lidarrConfigured, lidarrStatus }) {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans antialiased transition-colors duration-200 safe-area-padding">
-      <Sidebar isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus} />
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans antialiased transition-colors duration-200">
+      <Sidebar
+        isHealthy={isHealthy}
+        lidarrConfigured={lidarrConfigured}
+        lidarrStatus={lidarrStatus}
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+      />
 
       <div className="md:ml-64 flex flex-col min-h-screen transition-all duration-300 ease-in-out">
-        <header className="sticky top-0 z-30 pl-16 pr-6 py-4 md:px-6 bg-gray-50/90 dark:bg-gray-950/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 flex items-center pt-safe pr-safe">
+        <header className="sticky top-0 z-30 px-4 py-3 md:px-6 bg-gray-50/90 dark:bg-gray-950/90 backdrop-blur-md border-b border-gray-200 dark:border-gray-800 flex items-center pt-safe gap-4">
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-2 -ml-2 text-gray-500 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800 rounded-lg md:hidden"
+            aria-label="Open navigation"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          
           <form onSubmit={handleSearch} className="relative w-full">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
               <Search className="h-5 w-5 text-gray-400 dark:text-gray-500" />
@@ -35,7 +55,7 @@ function Layout({ children, isHealthy, lidarrConfigured, lidarrStatus }) {
           </form>
         </header>
 
-        <main className="flex-1 w-full max-w-[1600px] mx-auto p-6 md:p-8 lg:p-10 pr-safe">
+        <main className="flex-1 w-full max-w-[1600px] mx-auto p-4 md:p-8 lg:p-10 pr-safe">
           <div className="animate-fade-in">{children}</div>
         </main>
 

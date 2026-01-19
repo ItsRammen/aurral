@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   Library,
@@ -15,15 +14,16 @@ import {
 import { useTheme } from "../contexts/ThemeContext";
 import { useAuth } from "../contexts/AuthContext";
 
-function Sidebar({ isHealthy, lidarrConfigured, lidarrStatus }) {
-  const [isOpen, setIsOpen] = useState(false);
+function Sidebar({
+  isHealthy,
+  lidarrConfigured,
+  lidarrStatus,
+  isOpen,
+  onClose,
+}) {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
   const { authRequired, logout } = useAuth();
-
-  useEffect(() => {
-    setIsOpen(false);
-  }, [location.pathname]);
 
   const isActive = (path) => {
     if (path === "/discover" && location.pathname === "/") return true;
@@ -39,22 +39,10 @@ function Sidebar({ isHealthy, lidarrConfigured, lidarrStatus }) {
 
   return (
     <>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        style={{
-          top: "calc(1rem + env(safe-area-inset-top))",
-          left: "calc(1rem + env(safe-area-inset-left))",
-        }}
-        className="fixed z-50 p-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg md:hidden shadow-lg border border-gray-200 dark:border-gray-800"
-        aria-label="Toggle navigation"
-      >
-        {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-      </button>
-
       {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
-          onClick={() => setIsOpen(false)}
+          onClick={onClose}
         />
       )}
 
@@ -63,8 +51,8 @@ function Sidebar({ isHealthy, lidarrConfigured, lidarrStatus }) {
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >
-        <div className="h-16 flex items-center px-6 border-b border-gray-200 dark:border-b-gray-800">
-          <Link to="/" className="flex items-center space-x-3 group w-full">
+        <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 dark:border-b-gray-800">
+          <Link to="/" className="flex items-center space-x-3 group">
             <img
               src="/arralogo.svg"
               alt="Aurral Logo"
@@ -74,6 +62,13 @@ function Sidebar({ isHealthy, lidarrConfigured, lidarrStatus }) {
               Aurral
             </span>
           </Link>
+          <button
+            onClick={onClose}
+            className="md:hidden p-2 -mr-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg"
+            aria-label="Close navigation"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
