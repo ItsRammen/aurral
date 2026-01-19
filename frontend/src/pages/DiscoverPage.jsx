@@ -311,7 +311,7 @@ function DiscoverPage() {
               <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
                 Your Top Genres
               </h3>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-2 max-h-[5.5rem] overflow-hidden">
                 {topGenres.map((genre, i) => (
                   <button
                     key={i}

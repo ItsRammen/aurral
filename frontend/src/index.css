@@ -18,9 +18,7 @@
 
     /* Allow scrolling within the root element */
     #root {
-        height: 100%;
-        overflow-y: auto;
-        -webkit-overflow-scrolling: touch;
+        min-height: 100%;
     }
 
     * {
