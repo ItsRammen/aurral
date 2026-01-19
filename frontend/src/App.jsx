@@ -17,6 +17,7 @@ import { checkHealth } from "./utils/api";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import ReloadPrompt from "./components/ReloadPrompt";
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, isLoading, authRequired } = useAuth();
@@ -43,8 +44,6 @@ function AppContent() {
   const { isAuthenticated, authRequired } = useAuth();
 
   useEffect(() => {
-    // Only check health if we don't need auth OR if we are authenticated
-    // But since /api/health is public, we can always check it.
     const checkApiHealth = async () => {
       try {
         const health = await checkHealth();
@@ -59,7 +58,6 @@ function AppContent() {
     };
 
     checkApiHealth();
-    // 30 sec
     const interval = setInterval(checkApiHealth, 30000);
     return () => clearInterval(interval);
   }, [isAuthenticated]);
@@ -133,6 +131,7 @@ function App() {
       <ToastProvider>
         <AuthProvider>
           <AppContent />
+          <ReloadPrompt />
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>

@@ -52,7 +52,6 @@ function ArtistDetailsPage() {
         const artistData = await getArtistDetails(mbid);
         setArtist(artistData);
 
-        // Fetch similar artists
         try {
           const similarData = await getSimilarArtistsForArtist(mbid);
           setSimilarArtists(similarData.artists || []);
@@ -78,14 +77,12 @@ function ArtistDetailsPage() {
           setExistsInLidarr(lookup.exists);
         if (lookup.exists && lookup.artist) {
             setLidarrArtist(lookup.artist);
-            // Wait a moment for Lidarr to process metadata if just added
             setTimeout(async () => {
     try {
                 const albums = await getLidarrAlbums(lookup.artist.id);
-                console.log("Lidarr Albums:", albums); // DEBUG
+                console.log("Lidarr Albums:", albums);
                 setLidarrAlbums(albums);
     } catch (err) {
-                // Retry once if failed immediately
                 console.log("Retrying album fetch...");
                 setTimeout(async () => {
                   try {
@@ -115,7 +112,6 @@ function ArtistDetailsPage() {
   };
 
   const handleAddSuccess = async (addedArtist) => {
-    // If we weren't adding a specific 'artistToAdd' (similar artist), then we were adding the main artist
     if (!artistToAdd) {
       setExistsInLidarr(true);
     }
@@ -124,12 +120,10 @@ function ArtistDetailsPage() {
     setArtistToAdd(null);
     showSuccess(`Successfully added ${addedArtist.name} to Lidarr!`);
     
-    // Update local state if it was a similar artist being added
     if (addedArtist.id) {
       setExistingSimilar((prev) => ({ ...prev, [addedArtist.id]: true }));
     }
 
-    // Allow Lidarr some time to fetch metadata
     setTimeout(async () => {
         try {
         const lookup = await lookupArtistInLidarr(mbid);
@@ -147,7 +141,6 @@ function ArtistDetailsPage() {
   const handleRequestAlbum = async (albumId, title) => {
     setRequestingAlbum(albumId);
     try {
-      // Get the Lidarr album ID
       const lidarrAlbum = lidarrAlbums.find(
         (a) => a.foreignAlbumId === albumId,
     );
@@ -156,16 +149,13 @@ function ArtistDetailsPage() {
         throw new Error("Album not found in Lidarr");
       }
 
-      // Update monitored status
       await updateLidarrAlbum(lidarrAlbum.id, {
         ...lidarrAlbum,
         monitored: true,
       });
 
-      // Trigger search
       await searchLidarrAlbum([lidarrAlbum.id]);
 
-      // Update local state
       setLidarrAlbums((prev) =>
         prev.map((a) =>
           a.id === lidarrAlbum.id ? { ...a, monitored: true } : a,
@@ -186,9 +176,6 @@ function ArtistDetailsPage() {
     const album = lidarrAlbums.find((a) => a.foreignAlbumId === releaseGroupId);
 
     if (!album) {
-      // Album not found in Lidarr's list.
-      // Lidarr might have it under a different release group ID or it's genuinely missing.
-      // But if we've fetched the artist from Lidarr, we should have their albums.
       return null;
     }
 
@@ -485,9 +472,6 @@ function ArtistDetailsPage() {
                           </button>
                         )
                       ) : existsInLidarr ? (
-                        // If it's in Lidarr's list but we failed to match it above (unlikely if logic is correct),
-                        // or if it's genuinely not in Lidarr's database for this artist.
-                        // We can't request it if we don't have a Lidarr ID for it.
                         <span className="text-xs text-gray-400 italic">
                           Not in Lidarr
                         </span>

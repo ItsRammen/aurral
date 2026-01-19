@@ -88,7 +88,6 @@ function DiscoverPage() {
       [artist.id]: true,
     }));
     setArtistToAdd(null);
-    // Refresh requests
     getRequests().then(setRequests).catch(console.error);
     showSuccess(`Successfully added ${artist.name} to Lidarr!`);
   };
@@ -116,17 +115,12 @@ function DiscoverPage() {
     const sections = [];
     const usedArtistIds = new Set();
 
-    // Create a shuffled copy of top genres to ensure variety in sections
-    // This prevents showing the same top 4 genres every time
     const shuffledGenres = [...data.topGenres].sort(() => 0.5 - Math.random());
 
-    // Iterate through shuffled genres to find distinct sections
     for (const genre of shuffledGenres) {
-      // Stop if we have enough sections
       if (sections.length >= 4) break;
 
       const genreArtists = data.recommendations.filter((artist) => {
-        // Skip if artist already appears in a previous section
         if (usedArtistIds.has(artist.id)) return false;
 
         const artistTags = artist.tags || [];
@@ -135,11 +129,9 @@ function DiscoverPage() {
         );
       });
 
-      // Only create a section if we have enough unique artists
       if (genreArtists.length >= 4) {
         const selectedArtists = genreArtists.slice(0, 6);
         
-        // Mark artists as used
         selectedArtists.forEach(artist => usedArtistIds.add(artist.id));
 
         sections.push({

@@ -26,7 +26,6 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
   const [albumFolders, setAlbumFolders] = useState(true);
 
   useEffect(() => {
-    // Disable background scroll when modal is open
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = "unset";
@@ -50,7 +49,6 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
         setQualityProfiles(quality);
         setMetadataProfiles(metadata);
 
-        // Apply saved defaults or first available
         setSelectedRootFolder(
           savedSettings.rootFolderPath || (folders[0]?.path ?? ""),
         );

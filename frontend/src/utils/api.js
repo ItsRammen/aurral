@@ -179,7 +179,6 @@ export const searchArtistsByTag = async (tag, limit = 20) => {
 export const verifyCredentials = async (password, username = "admin") => {
   const token = btoa(`${username}:${password}`);
   try {
-    // Try to access a protected endpoint
     await api.get("/settings", {
       headers: {
         Authorization: `Basic ${token}`,

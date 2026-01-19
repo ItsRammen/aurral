@@ -123,7 +123,6 @@ const limiter = rateLimit({
 });
 app.use("/api/", limiter);
 
-// Settings Endpoints
 app.get("/api/settings", (req, res) => {
   res.json(db.data.settings || defaultData.settings);
 });
@@ -701,7 +700,7 @@ app.post("/api/lidarr/artists", async (req, res) => {
       albumFolder: useAlbumFolders,
       addOptions: {
         searchForMissingAlbums: searchMissing,
-        monitor: req.body.monitor || "all", // "all", "none", "future", "missing", "latest", "first"
+        monitor: req.body.monitor || "all", 
       },
     };
 
@@ -1141,7 +1140,6 @@ const updateDiscoveryCache = async () => {
             .map((t) => t.name);
 
           if (tags.length > 0) {
-            // Try specific AND search first
             let search = await musicbrainzRequest("/artist", {
               query: `${tags
                 .slice(0, 3)
@@ -1150,7 +1148,6 @@ const updateDiscoveryCache = async () => {
               limit: 15,
             });
 
-            // If too few results, try broader search
             if (!search.artists || search.artists.length < 5) {
               const broaderSearch = await musicbrainzRequest("/artist", {
                 query: `${tags

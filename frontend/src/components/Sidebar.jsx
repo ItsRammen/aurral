@@ -41,7 +41,11 @@ function Sidebar({ isHealthy, lidarrConfigured, lidarrStatus }) {
     <>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed top-4 left-4 z-50 p-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg md:hidden shadow-lg border border-gray-200 dark:border-gray-800"
+        style={{
+          top: "calc(1rem + env(safe-area-inset-top))",
+          left: "calc(1rem + env(safe-area-inset-left))",
+        }}
+        className="fixed z-50 p-2 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 rounded-lg md:hidden shadow-lg border border-gray-200 dark:border-gray-800"
         aria-label="Toggle navigation"
       >
         {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -55,7 +59,7 @@ function Sidebar({ isHealthy, lidarrConfigured, lidarrStatus }) {
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col border-r border-gray-200 dark:border-gray-800 transition-transform duration-300 ease-in-out ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col border-r border-gray-200 dark:border-gray-800 transition-transform duration-300 ease-in-out pl-safe pt-safe pb-safe ${
           isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
         }`}
       >

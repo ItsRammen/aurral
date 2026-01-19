@@ -10,13 +10,11 @@ export const AuthProvider = ({ children }) => {
 
   const checkAuthStatus = async () => {
     try {
-      // First check if auth is required by backend
       const healthData = await checkHealth();
       const isRequired = healthData.authRequired;
       const authUser = healthData.authUser || 'admin';
       setAuthRequired(isRequired);
       
-      // Store the expected username if we have one
       if (isRequired) {
          localStorage.setItem('auth_user', authUser);
       }
@@ -27,23 +25,18 @@ export const AuthProvider = ({ children }) => {
         return;
       }
 
-      // If required, check if we have a valid stored password
       const storedPassword = localStorage.getItem('auth_password');
       const storedUser = localStorage.getItem('auth_user') || 'admin';
 
       if (storedPassword) {
-        // Verify credentials with backend
         try {
            const isValid = await verifyCredentials(storedPassword, storedUser);
            setIsAuthenticated(isValid);
            if (!isValid) {
-             // If validation fails, clear the invalid credentials
              localStorage.removeItem('auth_password');
            }
         } catch (e) {
            console.error("Credential verification failed", e);
-           // On network error, we can't confirm, but usually we'd assume not authenticated
-           // or keep the previous state if we had one. But here we are initializing.
         }
       } else {
         setIsAuthenticated(false);
@@ -63,7 +56,6 @@ export const AuthProvider = ({ children }) => {
     if (!password) return false;
     
     try {
-      // Actually verify with backend before setting state
       const isValid = await verifyCredentials(password, username);
       if (isValid) {
         localStorage.setItem('auth_password', password);

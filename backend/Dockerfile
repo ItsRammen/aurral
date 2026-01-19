@@ -2,7 +2,6 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install su-exec
 RUN apk add --no-cache su-exec
 
 COPY package*.json ./
