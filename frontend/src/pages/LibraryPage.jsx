@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { getLidarrArtists, deleteArtistFromLidarr } from "../utils/api";
 import ArtistImage from "../components/ArtistImage";
+import LibraryStatsView from "../components/LibraryStatsView";
 import { useToast } from "../contexts/ToastContext";
 
 function LibraryPage() {
@@ -20,6 +21,7 @@ function LibraryPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [currentPage, setCurrentPage] = useState(1);
+  const [activeTab, setActiveTab] = useState("browse");
   const ITEMS_PER_PAGE = 24;
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
@@ -93,7 +95,7 @@ function LibraryPage() {
 
   const filteredArtists = getFilteredAndSortedArtists();
   const totalPages = Math.ceil(filteredArtists.length / ITEMS_PER_PAGE);
-  
+
   const currentArtists = filteredArtists.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
@@ -179,207 +181,236 @@ function LibraryPage() {
         </div>
       </div>
 
-      {loading && (
-        <div className="flex justify-center items-center py-20">
-          <Loader className="w-12 h-12 text-primary-600 animate-spin" />
-        </div>
-      )}
+      {/* Tab Switcher */}
+      <div className="flex gap-1 p-1 bg-gray-100 dark:bg-gray-800/50 rounded-xl mb-8 w-fit">
+        <button
+          onClick={() => setActiveTab("browse")}
+          className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "browse"
+              ? "bg-white dark:bg-gray-800 text-primary-500 shadow-sm"
+              : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}
+        >
+          Browse Library
+        </button>
+        <button
+          onClick={() => setActiveTab("stats")}
+          className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "stats"
+              ? "bg-white dark:bg-gray-800 text-primary-500 shadow-sm"
+              : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            }`}
+        >
+          Library Stats
+        </button>
+      </div>
 
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-500/20 rounded-lg p-6">
-          <div className="flex items-center">
-            <AlertCircle className="w-6 h-6 text-red-500 mr-3" />
-            <div>
-              <h3 className="text-red-900 dark:text-red-400 font-semibold">
-                Error Loading Library
-              </h3>
-              <p className="text-red-700 dark:text-red-300 mt-1">{error}</p>
-            </div>
-          </div>
-          <button onClick={fetchArtists} className="btn btn-primary mt-4">
-            Try Again
-          </button>
-        </div>
-      )}
-
-      {!loading && !error && artists.length === 0 && (
-        <div className="card text-center py-12">
-          <Music className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-          <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
-            No Artists in Library
-          </h3>
-          <p className="text-gray-500 dark:text-gray-400 mb-6">
-            Your Lidarr library is empty. Start by searching and adding artists.
-          </p>
-          <button
-            onClick={() => navigate("/search")}
-            className="btn btn-primary"
-          >
-            Search for Artists
-          </button>
-        </div>
-      )}
-
-      {!loading && !error && currentArtists.length > 0 && (
-        <div className="animate-slide-up">
-          {searchTerm && (
-            <div className="mb-4 text-gray-600 dark:text-gray-400">
-              Showing {filteredArtists.length} of {artists.length} artists
+      {activeTab === "stats" ? (
+        <LibraryStatsView />
+      ) : (
+        <>
+          {loading && (
+            <div className="flex justify-center items-center py-20">
+              <Loader className="w-12 h-12 text-primary-600 animate-spin" />
             </div>
           )}
 
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {currentArtists.map((artist) => {
-              const image = getArtistImage(artist);
-              const status = getMonitoringStatus(artist);
+          {error && (
+            <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-500/20 rounded-lg p-6">
+              <div className="flex items-center">
+                <AlertCircle className="w-6 h-6 text-red-500 mr-3" />
+                <div>
+                  <h3 className="text-red-900 dark:text-red-400 font-semibold">
+                    Error Loading Library
+                  </h3>
+                  <p className="text-red-700 dark:text-red-300 mt-1">{error}</p>
+                </div>
+              </div>
+              <button onClick={fetchArtists} className="btn btn-primary mt-4">
+                Try Again
+              </button>
+            </div>
+          )}
 
-              return (
-                <div
-                  key={artist.id}
-                  className="card hover:shadow-md transition-shadow group min-w-0"
-                >
-                  <div className="flex gap-4 min-w-0">
-                    {/* Artist Image */}
+          {!loading && !error && artists.length === 0 && (
+            <div className="card text-center py-12">
+              <Music className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                No Artists in Library
+              </h3>
+              <p className="text-gray-500 dark:text-gray-400 mb-6">
+                Your Lidarr library is empty. Start by searching and adding artists.
+              </p>
+              <button
+                onClick={() => navigate("/search")}
+                className="btn btn-primary"
+              >
+                Search for Artists
+              </button>
+            </div>
+          )}
+
+          {!loading && !error && currentArtists.length > 0 && (
+            <div className="animate-slide-up">
+              {searchTerm && (
+                <div className="mb-4 text-gray-600 dark:text-gray-400">
+                  Showing {filteredArtists.length} of {artists.length} artists
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {currentArtists.map((artist) => {
+                  const image = getArtistImage(artist);
+                  const status = getMonitoringStatus(artist);
+
+                  return (
                     <div
-                      className="w-24 h-24 flex-shrink-0 bg-gray-200 dark:bg-gray-800 rounded-lg overflow-hidden cursor-pointer"
-                      onClick={() =>
-                        navigate(`/artist/${artist.foreignArtistId}`)
-                      }
+                      key={artist.id}
+                      className="card hover:shadow-md transition-shadow group min-w-0"
                     >
-                      <ArtistImage
-                        src={image}
-                        mbid={artist.foreignArtistId}
-                        alt={artist.artistName}
-                        className="w-full h-full group-hover:scale-105 transition-transform"
-                      />
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <h3
-                        className="text-lg font-semibold text-gray-900 dark:text-gray-100 group-hover:text-primary-500 transition-colors cursor-pointer truncate"
-                        onClick={() =>
-                          navigate(`/artist/${artist.foreignArtistId}`)
-                        }
-                      >
-                        {artist.artistName}
-                      </h3>
-
-                      <div className="mt-2 space-y-1">
-                        <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 min-w-0">
-                          <span className="font-medium mr-2 flex-shrink-0">
-                            Albums:
-                          </span>
-                          <span className="truncate">
-                            {artist.statistics?.albumCount || 0}
-                          </span>
+                      <div className="flex gap-4 min-w-0">
+                        {/* Artist Image */}
+                        <div
+                          className="w-24 h-24 flex-shrink-0 bg-gray-200 dark:bg-gray-800 rounded-lg overflow-hidden cursor-pointer"
+                          onClick={() =>
+                            navigate(`/artist/${artist.foreignArtistId}`)
+                          }
+                        >
+                          <ArtistImage
+                            src={image}
+                            mbid={artist.foreignArtistId}
+                            alt={artist.artistName}
+                            className="w-full h-full group-hover:scale-105 transition-transform"
+                          />
                         </div>
 
-                        <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 min-w-0">
-                          <span className="font-medium mr-2 flex-shrink-0">
-                            Tracks:
-                          </span>
-                          <span className="truncate">
-                            {artist.statistics?.trackCount || 0}
-                          </span>
-                        </div>
-
-                        <div className="flex items-center gap-2 mt-2">
-                          <span
-                            className={`badge ${
-                              status.color === "green"
-                                ? "badge-success"
-                                : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
-                            }`}
+                        <div className="flex-1 min-w-0">
+                          <h3
+                            className="text-lg font-semibold text-gray-900 dark:text-gray-100 group-hover:text-primary-500 transition-colors cursor-pointer truncate"
+                            onClick={() =>
+                              navigate(`/artist/${artist.foreignArtistId}`)
+                            }
                           >
-                            {status.label}
-                          </span>
+                            {artist.artistName}
+                          </h3>
+
+                          <div className="mt-2 space-y-1">
+                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 min-w-0">
+                              <span className="font-medium mr-2 flex-shrink-0">
+                                Albums:
+                              </span>
+                              <span className="truncate">
+                                {artist.statistics?.albumCount || 0}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center text-sm text-gray-600 dark:text-gray-400 min-w-0">
+                              <span className="font-medium mr-2 flex-shrink-0">
+                                Tracks:
+                              </span>
+                              <span className="truncate">
+                                {artist.statistics?.trackCount || 0}
+                              </span>
+                            </div>
+
+                            <div className="flex items-center gap-2 mt-2">
+                              <span
+                                className={`badge ${status.color === "green"
+                                    ? "badge-success"
+                                    : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
+                                  }`}
+                              >
+                                {status.label}
+                              </span>
+                            </div>
+                          </div>
                         </div>
                       </div>
+
+                      <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 min-w-0">
+                        <button
+                          onClick={() =>
+                            navigate(`/artist/${artist.foreignArtistId}`)
+                          }
+                          className="btn btn-secondary flex-1 text-sm"
+                        >
+                          View Details
+                        </button>
+
+                        <a
+                          href={`https://musicbrainz.org/artist/${artist.foreignArtistId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="btn btn-secondary text-sm"
+                          title="View on MusicBrainz"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+
+                        <button
+                          onClick={() => handleDeleteArtist(artist)}
+                          disabled={deletingArtist === artist.id}
+                          className="btn btn-danger text-sm disabled:opacity-50"
+                          title="Remove from Lidarr"
+                        >
+                          {deletingArtist === artist.id ? (
+                            <Loader className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
                     </div>
-                  </div>
+                  );
+                })}
+              </div>
 
-                  <div className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-100 dark:border-gray-800 min-w-0">
-                    <button
-                      onClick={() =>
-                        navigate(`/artist/${artist.foreignArtistId}`)
-                      }
-                      className="btn btn-secondary flex-1 text-sm"
-                    >
-                      View Details
-                    </button>
-
-                    <a
-                      href={`https://musicbrainz.org/artist/${artist.foreignArtistId}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-secondary text-sm"
-                      title="View on MusicBrainz"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                    </a>
-
-                    <button
-                      onClick={() => handleDeleteArtist(artist)}
-                      disabled={deletingArtist === artist.id}
-                      className="btn btn-danger text-sm disabled:opacity-50"
-                      title="Remove from Lidarr"
-                    >
-                      {deletingArtist === artist.id ? (
-                        <Loader className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
+              {totalPages > 1 && (
+                <div className="flex justify-center mt-8 space-x-2">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="btn btn-secondary disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="flex items-center px-4 text-gray-700 dark:text-gray-300">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() =>
+                      setCurrentPage((p) => Math.min(totalPages, p + 1))
+                    }
+                    disabled={currentPage === totalPages}
+                    className="btn btn-secondary disabled:opacity-50"
+                  >
+                    Next
+                  </button>
                 </div>
-              );
-            })}
-          </div>
-
-          {totalPages > 1 && (
-            <div className="flex justify-center mt-8 space-x-2">
-              <button
-                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                disabled={currentPage === 1}
-                className="btn btn-secondary disabled:opacity-50"
-              >
-                Previous
-              </button>
-              <span className="flex items-center px-4 text-gray-700 dark:text-gray-300">
-                Page {currentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                disabled={currentPage === totalPages}
-                className="btn btn-secondary disabled:opacity-50"
-              >
-                Next
-              </button>
+              )}
             </div>
           )}
-        </div>
-      )}
 
-      {!loading &&
-        !error &&
-        artists.length > 0 &&
-        filteredArtists.length === 0 && (
-          <div className="card text-center py-12">
-            <Music className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              No Artists Found
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400 mb-4">
-              No artists match your search "{searchTerm}"
-            </p>
-            <button
-              onClick={() => setSearchTerm("")}
-              className="btn btn-secondary"
-            >
-              Clear Search
-            </button>
-          </div>
-        )}
+          {!loading &&
+            !error &&
+            artists.length > 0 &&
+            filteredArtists.length === 0 && (
+              <div className="card text-center py-12">
+                <Music className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                  No Artists Found
+                </h3>
+                <p className="text-gray-500 dark:text-gray-400 mb-4">
+                  No artists match your search "{searchTerm}"
+                </p>
+                <button
+                  onClick={() => setSearchTerm("")}
+                  className="btn btn-secondary"
+                >
+                  Clear Search
+                </button>
+              </div>
+            )}
+        </>
+      )}
     </div>
   );
 }

@@ -131,7 +131,7 @@ function DiscoverPage() {
 
       if (genreArtists.length >= 4) {
         const selectedArtists = genreArtists.slice(0, 6);
-        
+
         selectedArtists.forEach(artist => usedArtistIds.add(artist.id));
 
         sections.push({
@@ -159,15 +159,23 @@ function DiscoverPage() {
 
         {status && (
           <div
-            className={`absolute bottom-2 left-2 right-2 py-1 px-2 rounded text-[10px] font-bold uppercase text-center backdrop-blur-md shadow-lg ${
-              status === "available"
+            className={`absolute bottom-2 left-2 right-2 py-1 px-2 rounded text-[10px] font-bold uppercase text-center backdrop-blur-md shadow-lg ${status === "available"
                 ? "bg-green-500/90 text-white"
                 : status === "processing"
                   ? "bg-blue-500/90 text-white"
                   : "bg-yellow-500/90 text-white"
-            }`}
+              }`}
           >
-            {status}
+            {artist.statistics ? (
+              <span className="flex flex-col leading-tight">
+                <span>{status === "available" ? "Available" : status}</span>
+                <span className="text-[8px] opacity-90 normal-case font-medium">
+                  {artist.statistics.trackCount} / {artist.statistics.totalTrackCount} Tracks
+                </span>
+              </span>
+            ) : (
+              status
+            )}
           </div>
         )}
 
@@ -401,6 +409,7 @@ function DiscoverPage() {
                   image: getLidarrArtistImage(artist),
                   type: "Artist",
                   subtitle: `Added ${new Date(artist.added).toLocaleDateString()}`,
+                  statistics: artist.statistics,
                 }}
               />
             ))}
