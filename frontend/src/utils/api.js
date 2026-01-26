@@ -76,6 +76,11 @@ export const getLidarrArtists = async () => {
   return response.data;
 };
 
+export const getLibraryStats = async () => {
+  const response = await api.get("/lidarr/library/stats");
+  return response.data;
+};
+
 export const getLidarrArtist = async (id) => {
   const response = await api.get(`/lidarr/artists/${id}`);
   return response.data;
@@ -118,6 +123,13 @@ export const getLidarrMetadataProfiles = async () => {
   return response.data;
 };
 
+export const getLidarrTracks = async (albumId, artistId) => {
+  const response = await api.get("/lidarr/tracks", {
+    params: { albumId, artistId },
+  });
+  return response.data;
+};
+
 export const getLidarrAlbums = async (artistId) => {
   const response = await api.get("/lidarr/albums", {
     params: { artistId },
@@ -132,6 +144,21 @@ export const updateLidarrAlbum = async (id, data) => {
 
 export const searchLidarrAlbum = async (albumIds) => {
   const response = await api.post("/lidarr/command/albumsearch", { albumIds });
+  return response.data;
+};
+
+export const monitorLidarrAlbums = async (albumIds, monitored) => {
+  const response = await api.post("/lidarr/albums/monitor", { albumIds, monitored });
+  return response.data;
+};
+
+export const runLidarrCommand = async (commandName, params = {}) => {
+  const response = await api.post("/lidarr/command", { name: commandName, ...params });
+  return response.data;
+};
+
+export const updateLidarrArtist = async (id, data) => {
+  const response = await api.put(`/lidarr/artists/${id}`, data);
   return response.data;
 };
 

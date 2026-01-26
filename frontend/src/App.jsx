@@ -63,7 +63,7 @@ function AppContent() {
   }, [isAuthenticated]);
 
   return (
-        <Router>
+    <Router>
       <ProtectedRoute>
         <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
           {isHealthy === false && (
@@ -103,8 +103,11 @@ function AppContent() {
                   />
                 </svg>
                 <p className="text-yellow-800 dark:text-yellow-400 font-medium">
-                  Lidarr is not configured. Please add your Lidarr API key in
-                  the backend settings.
+                  Lidarr is not configured. Please go to{" "}
+                  <a href="/settings" className="underline font-bold">
+                    Settings
+                  </a>{" "}
+                  to configure your Lidarr connection.
                 </p>
               </div>
             </div>

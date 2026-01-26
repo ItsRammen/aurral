@@ -21,9 +21,11 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
   const [selectedQualityProfile, setSelectedQualityProfile] = useState("");
   const [selectedMetadataProfile, setSelectedMetadataProfile] = useState("");
   const [monitored, setMonitored] = useState(true);
-  const [monitorOption, setMonitorOption] = useState("all");
+  const [monitorOption, setMonitorOption] = useState("none");
   const [searchForMissingAlbums, setSearchForMissingAlbums] = useState(false);
   const [albumFolders, setAlbumFolders] = useState(true);
+  const [selectedAlbums, setSelectedAlbums] = useState(new Set());
+  const [showAlbums, setShowAlbums] = useState(false);
 
   useEffect(() => {
     document.body.style.overflow = "hidden";
@@ -73,6 +75,14 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
     fetchOptions();
   }, []);
 
+  // Initial selection of albums moved to advanced options or explicit user action
+  useEffect(() => {
+    if (artist && artist["release-groups"]) {
+      // Default to no albums selected
+      setSelectedAlbums(new Set());
+    }
+  }, [artist]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -99,6 +109,11 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
         monitor: monitorOption,
         searchForMissingAlbums,
         albumFolders,
+        albums: artist["release-groups"]
+          ? artist["release-groups"]
+            .filter((rg) => selectedAlbums.has(rg.id))
+            .map((rg) => ({ id: rg.id, title: rg.title }))
+          : [],
       });
 
       onSuccess(artist);
@@ -271,24 +286,24 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
                     </div>
 
                     {monitored && (
-                        <div className="ml-8 mb-4">
-                          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                            Monitor Option
-                          </label>
-                          <select
-                            value={monitorOption}
-                            onChange={(e) => setMonitorOption(e.target.value)}
-                            className="input text-sm"
-                            disabled={submitting}
-                          >
-                             <option value="all">All Albums</option>
-                             <option value="future">Future Albums</option>
-                             <option value="missing">Missing Albums</option>
-                             <option value="latest">Latest Album</option>
-                             <option value="first">First Album</option>
-                             <option value="none">None (Artist Only)</option>
-                          </select>
-                        </div>
+                      <div className="ml-8 mb-4">
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                          Monitor Option
+                        </label>
+                        <select
+                          value={monitorOption}
+                          onChange={(e) => setMonitorOption(e.target.value)}
+                          className="input text-sm"
+                          disabled={submitting}
+                        >
+                          <option value="all">All Albums</option>
+                          <option value="future">Future Albums</option>
+                          <option value="missing">Missing Albums</option>
+                          <option value="latest">Latest Album</option>
+                          <option value="first">First Album</option>
+                          <option value="none">None (Artist Only)</option>
+                        </select>
+                      </div>
                     )}
 
                     <div className="flex items-start">
@@ -334,6 +349,71 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
                         </label>
                       </div>
                     </div>
+
+                    <div className="pt-4 border-t border-gray-200 dark:border-gray-800">
+                      <button
+                        type="button"
+                        onClick={() => setShowAlbums(!showAlbums)}
+                        className="flex items-center justify-between w-full text-left font-semibold text-gray-900 dark:text-gray-100"
+                      >
+                        <span>Select Albums ({selectedAlbums.size})</span>
+                        {showAlbums ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+
+                      {showAlbums && artist["release-groups"] && (
+                        <div className="mt-4 space-y-2 max-h-60 overflow-y-auto pr-2">
+                          <div className="flex gap-2 mb-3">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAlbums(new Set(artist["release-groups"].map(rg => rg.id)))}
+                              className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                            >
+                              Select All
+                            </button>
+                            <span className="text-gray-300">|</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAlbums(new Set())}
+                              className="text-xs text-primary-600 hover:text-primary-700 font-medium"
+                            >
+                              Select None
+                            </button>
+                          </div>
+                          {artist["release-groups"]
+                            .sort((a, b) => (b["first-release-date"] || "").localeCompare(a["first-release-date"] || ""))
+                            .map((rg) => (
+                              <label key={rg.id} className="flex items-center p-2 rounded hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer group">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedAlbums.has(rg.id)}
+                                  onChange={(e) => {
+                                    const next = new Set(selectedAlbums);
+                                    if (e.target.checked) {
+                                      next.add(rg.id);
+                                      setMonitored(true); // Auto-monitor artist if an album is selected
+                                    } else {
+                                      next.delete(rg.id);
+                                    }
+                                    setSelectedAlbums(next);
+                                  }}
+                                  className="w-4 h-4 text-primary-600 border-gray-300 dark:border-gray-600 dark:bg-gray-800 rounded focus:ring-primary-500"
+                                />
+                                <div className="ml-3 flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">
+                                    {rg.title}
+                                  </p>
+                                  <p className="text-xs text-gray-500">
+                                    {rg["first-release-date"]?.split("-")[0] || "Unknown Date"} • {rg["primary-type"] || "Unknown"}
+                                  </p>
+                                </div>
+                              </label>
+                            ))}
+                        </div>
+                      )}
+                      {!artist["release-groups"] && (
+                        <p className="text-sm text-gray-500 italic mt-2">No albums found for this artist.</p>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -352,16 +432,16 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
               )}
 
               {showOptions && (
-                 <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-800">
-                    <button
-                      type="button"
-                      onClick={onClose}
-                      className="btn btn-secondary flex-1"
-                      disabled={submitting}
-                    >
-                      Cancel
-                    </button>
-                 </div>
+                <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-gray-800">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="btn btn-secondary flex-1"
+                    disabled={submitting}
+                  >
+                    Cancel
+                  </button>
+                </div>
               )}
             </form>
           )}

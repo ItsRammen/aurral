@@ -40,6 +40,10 @@ function SettingsPage() {
     monitored: true,
     searchForMissingAlbums: false,
     albumFolders: true,
+    lidarrUrl: "",
+    lidarrApiKey: "",
+    lastfmApiKey: "",
+    contactEmail: "",
   });
 
   useEffect(() => {
@@ -50,7 +54,7 @@ function SettingsPage() {
           checkHealth(),
           getAppSettings(),
         ]);
-      setHealth(healthData);
+        setHealth(healthData);
         setSettings(savedSettings);
 
         if (healthData.lidarrConfigured) {
@@ -67,8 +71,8 @@ function SettingsPage() {
         console.error("Failed to fetch settings:", err);
       } finally {
         setLoading(false);
-    }
-  };
+      }
+    };
 
     fetchSettings();
   }, []);
@@ -98,7 +102,7 @@ function SettingsPage() {
     } catch (err) {
       showError(
         "Failed to start refresh: " +
-          (err.response?.data?.message || err.message),
+        (err.response?.data?.message || err.message),
       );
     } finally {
       setRefreshingDiscovery(false);
@@ -121,7 +125,7 @@ function SettingsPage() {
     } catch (err) {
       showError(
         "Failed to clear cache: " +
-          (err.response?.data?.message || err.message),
+        (err.response?.data?.message || err.message),
       );
     } finally {
       setClearingCache(false);
@@ -152,9 +156,71 @@ function SettingsPage() {
               Default Artist Options
             </h2>
             <form onSubmit={handleSaveSettings} className="space-y-4">
-              <div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Lidarr URL
+                  </label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="http://localhost:8686"
+                    value={settings.lidarrUrl || ""}
+                    onChange={(e) =>
+                      setSettings({ ...settings, lidarrUrl: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Lidarr API Key
+                  </label>
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder="Your Lidarr API Key"
+                    value={settings.lidarrApiKey || ""}
+                    onChange={(e) =>
+                      setSettings({ ...settings, lidarrApiKey: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Last.fm API Key (Optional)
+                  </label>
+                  <input
+                    type="password"
+                    className="input"
+                    placeholder="Your Last.fm API Key"
+                    value={settings.lastfmApiKey || ""}
+                    onChange={(e) =>
+                      setSettings({ ...settings, lastfmApiKey: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Contact Email (MusicBrainz)
+                  </label>
+                  <input
+                    type="email"
+                    className="input"
+                    placeholder="user@example.com"
+                    value={settings.contactEmail || ""}
+                    onChange={(e) =>
+                      setSettings({ ...settings, contactEmail: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 dark:border-gray-800 pt-4 mt-4">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Root Folder
+                  Default Root Folder
                 </label>
                 <select
                   className="input"
@@ -332,7 +398,7 @@ function SettingsPage() {
                         </span>
                       </>
                     ) : health.lidarrConfigured ? (
-                       <>
+                      <>
                         <AlertCircle className="w-5 h-5 text-orange-500 mr-2" />
                         <span className="text-orange-700 dark:text-orange-400 font-medium">
                           Unreachable
@@ -389,7 +455,7 @@ function SettingsPage() {
               </div>
             )}
           </div>
-      </div>
+        </div>
 
         <div className="space-y-8">
           {health?.discovery && (
@@ -507,59 +573,18 @@ function SettingsPage() {
       </div>
 
       {!health?.lidarrConfigured && !loading && (
-        <div className="card bg-yellow-50 dark:bg-yellow-900/10 border-yellow-200 dark:border-yellow-500/20 mt-8">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-            Setup Instructions
+        <div className="card bg-primary-50 dark:bg-primary-900/10 border-primary-200 dark:border-primary-500/20 mt-8">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
+            <Sparkles className="w-6 h-6 mr-2 text-primary-500" />
+            Initial Setup Required
           </h2>
-          <div className="prose prose-sm text-gray-700 dark:text-gray-300">
-            <p className="mb-4">
-              To configure Aurral, you need to set up the backend:
-            </p>
-            <ol className="list-decimal list-inside space-y-2">
-              <li>
-                Navigate to the{" "}
-                <code className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">
-                  backend
-                </code>{" "}
-                directory
-              </li>
-              <li>
-                Copy{" "}
-                <code className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">
-                  .env.example
-                </code>{" "}
-                to{" "}
-                <code className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">
-                  .env
-                </code>
-              </li>
-              <li>
-                Edit the{" "}
-                <code className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">
-                  .env
-                </code>{" "}
-                file and add:
-                <ul className="list-disc list-inside ml-4 mt-2 space-y-1">
-                  <li>
-                    Your Lidarr URL (e.g.,{" "}
-                    <code className="bg-gray-200 dark:bg-gray-700 px-2 py-1 rounded">
-                      http://localhost:8686
-                    </code>
-                    )
-                  </li>
-                  <li>
-                    Your Lidarr API key (found in Lidarr Settings → General →
-                    Security)
-                  </li>
-                  <li>Your contact email for MusicBrainz API compliance</li>
-                  <li>
-                    (Optional) Your Last.fm API key for better images and
-                    recommendations
-                  </li>
-                </ul>
-              </li>
-              <li>Restart the backend server</li>
-            </ol>
+          <p className="text-gray-700 dark:text-gray-300 mb-6">
+            Welcome to Aurral! To get started, please configure your Lidarr connection above.
+            Once configured, you'll be able to search for artists and manage your library.
+          </p>
+          <div className="flex items-center text-sm text-primary-700 dark:text-primary-400">
+            <Info className="w-4 h-4 mr-2" />
+            You can find your Lidarr API key in Lidarr Settings → General → Security.
           </div>
         </div>
       )}
