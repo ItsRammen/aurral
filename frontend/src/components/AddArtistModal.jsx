@@ -99,7 +99,7 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
     setError(null);
 
     try {
-      await addArtistToLidarr({
+      const response = await addArtistToLidarr({
         foreignArtistId: artist.id,
         artistName: artist.name,
         qualityProfileId: parseInt(selectedQualityProfile),
@@ -116,7 +116,7 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
           : [],
       });
 
-      onSuccess(artist);
+      onSuccess(artist, response);
     } catch (err) {
       setError(err.response?.data?.message || "Failed to add artist to Lidarr");
     } finally {

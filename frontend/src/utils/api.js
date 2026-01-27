@@ -12,11 +12,9 @@ const api = axios.create({
 
 api.interceptors.request.use(
   (config) => {
-    const password = localStorage.getItem("auth_password");
-    const username = localStorage.getItem("auth_user") || "admin";
-    if (password) {
-      const token = btoa(`${username}:${password}`);
-      config.headers["Authorization"] = `Basic ${token}`;
+    const token = localStorage.getItem("auth_token");
+    if (token) {
+      config.headers["Authorization"] = `Bearer ${token}`;
     }
     return config;
   },
@@ -172,6 +170,26 @@ export const deleteRequest = async (mbid) => {
   return response.data;
 };
 
+export const approveRequest = async (id) => {
+  const response = await api.post(`/requests/${id}/approve`);
+  return response.data;
+};
+
+export const denyRequest = async (id) => {
+  const response = await api.post(`/requests/${id}/deny`);
+  return response.data;
+};
+
+export const toggleLikeArtist = async (mbid, name, image) => {
+  const response = await api.post(`/artists/${mbid}/like`, { name, image });
+  return response.data;
+};
+
+export const getLikedArtists = async () => {
+  const response = await api.get("/artists/likes");
+  return response.data;
+};
+
 export const getRecentlyAdded = async () => {
   const response = await api.get("/lidarr/recent");
   return response.data;
@@ -179,6 +197,13 @@ export const getRecentlyAdded = async () => {
 
 export const getDiscovery = async () => {
   const response = await api.get("/discover");
+  return response.data;
+};
+
+export const getPersonalDiscovery = async (limit = 20) => {
+  const response = await api.get("/discover/personal", {
+    params: { limit },
+  });
   return response.data;
 };
 

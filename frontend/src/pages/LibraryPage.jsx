@@ -7,8 +7,10 @@ import {
   Trash2,
   AlertCircle,
   RefreshCw,
+  Clock,
+  Heart,
 } from "lucide-react";
-import { getLidarrArtists, deleteArtistFromLidarr } from "../utils/api";
+import { getLidarrArtists, deleteArtistFromLidarr, getLikedArtists, toggleLikeArtist } from "../utils/api";
 import ArtistImage from "../components/ArtistImage";
 import LibraryStatsView from "../components/LibraryStatsView";
 import { useToast } from "../contexts/ToastContext";
@@ -18,6 +20,8 @@ function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [deletingArtist, setDeletingArtist] = useState(null);
+  const [likedArtists, setLikedArtists] = useState([]);
+  const [likingArtist, setLikingArtist] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState("name");
   const [currentPage, setCurrentPage] = useState(1);
@@ -43,6 +47,7 @@ function LibraryPage() {
 
   useEffect(() => {
     fetchArtists();
+    getLikedArtists().then(setLikedArtists).catch(console.error);
   }, []);
 
   const handleDeleteArtist = async (artist) => {
@@ -63,6 +68,29 @@ function LibraryPage() {
       );
     } finally {
       setDeletingArtist(null);
+    }
+  };
+
+  const handleToggleLike = async (e, artist) => {
+    e.stopPropagation();
+    setLikingArtist(artist.id);
+    // Standardize artist object for toggleLikeArtist
+    const artistObj = {
+      id: artist.foreignArtistId,
+      name: artist.artistName,
+      image: getArtistImage(artist)
+    };
+    try {
+      const result = await toggleLikeArtist(artistObj.id, artistObj.name, artistObj.image);
+      if (result.liked) {
+        setLikedArtists(prev => [...prev, artistObj.id]);
+      } else {
+        setLikedArtists(prev => prev.filter(id => id !== artistObj.id));
+      }
+    } catch (err) {
+      console.error("Failed to toggle like:", err);
+    } finally {
+      setLikingArtist(null);
     }
   };
 
@@ -186,8 +214,8 @@ function LibraryPage() {
         <button
           onClick={() => setActiveTab("browse")}
           className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "browse"
-              ? "bg-white dark:bg-gray-800 text-primary-500 shadow-sm"
-              : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            ? "bg-white dark:bg-gray-800 text-primary-500 shadow-sm"
+            : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             }`}
         >
           Browse Library
@@ -195,8 +223,8 @@ function LibraryPage() {
         <button
           onClick={() => setActiveTab("stats")}
           className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === "stats"
-              ? "bg-white dark:bg-gray-800 text-primary-500 shadow-sm"
-              : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+            ? "bg-white dark:bg-gray-800 text-primary-500 shadow-sm"
+            : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
             }`}
         >
           Library Stats
@@ -311,11 +339,24 @@ function LibraryPage() {
                               </span>
                             </div>
 
+                            {artist.added && (
+                              <div className="flex items-center text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                                Added {new Date(artist.added).toLocaleDateString()}
+                              </div>
+                            )}
+
+                            {artist.requestedBy && (
+                              <div className="flex items-center text-sm text-primary-600 dark:text-primary-400 font-medium mt-0.5">
+                                <Clock className="w-3 h-3 mr-2" />
+                                Requested by {artist.requestedBy}
+                              </div>
+                            )}
+
                             <div className="flex items-center gap-2 mt-2">
                               <span
                                 className={`badge ${status.color === "green"
-                                    ? "badge-success"
-                                    : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
+                                  ? "badge-success"
+                                  : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
                                   }`}
                               >
                                 {status.label}
@@ -333,6 +374,18 @@ function LibraryPage() {
                           className="btn btn-secondary flex-1 text-sm"
                         >
                           View Details
+                        </button>
+
+                        <button
+                          onClick={(e) => handleToggleLike(e, artist)}
+                          disabled={likingArtist === artist.id}
+                          className={`btn text-sm ${likedArtists.includes(artist.foreignArtistId)
+                            ? "bg-red-500 text-white border-red-500 hover:bg-red-600"
+                            : "btn-secondary hover:text-red-500"
+                            }`}
+                          title={likedArtists.includes(artist.foreignArtistId) ? "Unlike Artist" : "Like Artist"}
+                        >
+                          <Heart className={`w-4 h-4 ${likedArtists.includes(artist.foreignArtistId) ? "fill-current" : ""}`} />
                         </button>
 
                         <a
