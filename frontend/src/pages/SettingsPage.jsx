@@ -11,6 +11,12 @@ import {
   Trash2,
   TrendingUp,
   Save,
+  Globe,
+  Users,
+  Music,
+  Box,
+  Activity,
+  Layers,
 } from "lucide-react";
 import api, {
   checkHealth,
@@ -31,6 +37,7 @@ function SettingsPage() {
   const [refreshingDiscovery, setRefreshingDiscovery] = useState(false);
   const [clearingCache, setClearingCache] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [activeTab, setActiveTab] = useState("general");
   const { showSuccess, showError, showInfo } = useToast();
 
   const [settings, setSettings] = useState({
@@ -44,6 +51,10 @@ function SettingsPage() {
     lidarrApiKey: "",
     lastfmApiKey: "",
     contactEmail: "",
+    discoveryRefreshInterval: 24,
+    appName: "Aurral",
+    appUrl: "",
+    defaultPermissions: ["request"],
   });
 
   useEffect(() => {
@@ -132,462 +143,389 @@ function SettingsPage() {
     }
   };
 
+  const tabs = [
+    { id: "general", label: "General", icon: Globe },
+    { id: "users", label: "Users", icon: Users },
+    { id: "music", label: "Music Services", icon: Music },
+    { id: "services", label: "Services", icon: Box },
+    { id: "jobs", label: "Jobs & Cache", icon: Activity },
+    { id: "about", label: "About", icon: Info },
+  ];
+
   return (
-    <div className="animate-fade-in">
-      <div className="card mb-8">
-        <div className="flex items-center mb-6">
-          <Settings className="w-8 h-8 text-primary-600 mr-3" />
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-              Settings
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400">
-              Configuration and system information
-            </p>
-          </div>
-        </div>
+    <div className="min-h-screen pb-32 animate-fade-in relative max-w-5xl mx-auto px-4 md:px-8">
+      {/* Settings Header */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Settings</h1>
+        <p className="text-gray-500 dark:text-gray-400 mt-1">Configure global and default settings for Aurral.</p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="space-y-8">
-          <div className="card">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center">
-              <Database className="w-6 h-6 mr-2 text-primary-500" />
-              Default Artist Options
-            </h2>
-            <form onSubmit={handleSaveSettings} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Lidarr URL
+      {/* Tabs Navigation */}
+      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-gray-800 mb-8 overflow-x-auto no-scrollbar">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-6 py-3 text-sm font-bold transition-all border-b-2 whitespace-nowrap ${isActive
+                ? "border-primary-500 text-primary-600 dark:text-primary-400 bg-primary-500/5"
+                : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-900/50"
+                }`}
+            >
+              <Icon className={`w-4 h-4 ${isActive ? "text-primary-500" : ""}`} />
+              {tab.label}
+            </button>
+          )
+        })}
+      </div>
+
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+        {activeTab === "general" && (
+          <section className="space-y-6">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm space-y-8">
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Application Title</label>
+                    <input
+                      type="text"
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
+                      value={settings.appName || ""}
+                      onChange={(e) => setSettings({ ...settings, appName: e.target.value })}
+                      placeholder="Aurral"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Application URL</label>
+                    <input
+                      type="text"
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
+                      value={settings.appUrl || ""}
+                      onChange={(e) => setSettings({ ...settings, appUrl: e.target.value })}
+                      placeholder="https://aurral.yourdomain.com"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-6 border-t border-gray-100 dark:border-gray-800">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Last.fm API Key</label>
+                    <input
+                      type="password"
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
+                      value={settings.lastfmApiKey || ""}
+                      onChange={(e) => setSettings({ ...settings, lastfmApiKey: e.target.value })}
+                      placeholder="Optional"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Contact Email</label>
+                    <input
+                      type="email"
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
+                      value={settings.contactEmail || ""}
+                      onChange={(e) => setSettings({ ...settings, contactEmail: e.target.value })}
+                      placeholder="user@example.com"
+                    />
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 italic px-1">Used for MusicBrainz identification</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "users" && (
+          <section className="space-y-6">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm">
+              <h3 className="text-lg font-black text-gray-900 dark:text-white mb-6">Default User Settings</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">Set the default permissions for all newly created users.</p>
+
+              <div className="space-y-4">
+                {[
+                  { id: 'request', label: 'Request', desc: 'Allows users to submit new music requests.' },
+                  { id: 'auto_approve', label: 'Auto-Approve', desc: 'Automatically approves any requests made by the user.' },
+                  { id: 'manage_requests', label: 'Manage Requests', desc: 'Allows users to approve or deny requests from others.' },
+                  { id: 'manage_users', label: 'Manage Users', desc: 'Allows users to create and edit other users.' },
+                ].map((perm) => (
+                  <label key={perm.id} className="group flex items-center justify-between p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition-all cursor-pointer border border-transparent hover:border-primary-500/20">
+                    <div className="flex flex-col">
+                      <span className="font-bold text-gray-900 dark:text-white">{perm.label}</span>
+                      <span className="text-xs text-gray-500 dark:text-gray-400">{perm.desc}</span>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={settings.defaultPermissions?.includes(perm.id)}
+                        onChange={(e) => {
+                          const current = settings.defaultPermissions || [];
+                          const updated = e.target.checked
+                            ? [...current, perm.id]
+                            : current.filter(p => p !== perm.id);
+                          setSettings({ ...settings, defaultPermissions: updated });
+                        }}
+                      />
+                      <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500"></div>
+                    </div>
                   </label>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "music" && (
+          <section className="space-y-6">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm">
+              <h3 className="text-lg font-black text-gray-900 dark:text-white mb-6">Music Services</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">Configure your media streaming servers to sync your library.</p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {['Plex', 'Navidrome', 'Jellyfin'].map(service => (
+                  <div key={service} className="p-6 rounded-3xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 flex flex-col items-center text-center group grayscale opacity-50 cursor-not-allowed text-gray-500">
+                    <div className="w-12 h-12 rounded-2xl bg-gray-200 dark:bg-gray-700 mb-4 flex items-center justify-center text-gray-400">
+                      <Music className="w-6 h-6" />
+                    </div>
+                    <h4 className="font-bold">{service}</h4>
+                    <span className="text-[10px] uppercase font-black text-gray-400 mt-2 tracking-widest">Coming Soon</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {activeTab === "services" && (
+          <section className="space-y-6">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm">
+              <div className="flex items-center gap-4 mb-8">
+                <div className="w-12 h-12 rounded-2xl bg-primary-100 dark:bg-primary-950/30 flex items-center justify-center">
+                  <img src="/arralogo.svg" alt="Lidarr" className="w-8 h-8" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-gray-900 dark:text-white">Lidarr</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Managed music requests and metadata</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Lidarr URL</label>
                   <input
                     type="text"
-                    className="input"
-                    placeholder="http://localhost:8686"
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
                     value={settings.lidarrUrl || ""}
-                    onChange={(e) =>
-                      setSettings({ ...settings, lidarrUrl: e.target.value })
-                    }
+                    onChange={(e) => setSettings({ ...settings, lidarrUrl: e.target.value })}
+                    placeholder="http://localhost:8686"
                   />
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Lidarr API Key
-                  </label>
+                <div className="space-y-2">
+                  <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Lidarr API Key</label>
                   <input
                     type="password"
-                    className="input"
-                    placeholder="Your Lidarr API Key"
+                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
                     value={settings.lidarrApiKey || ""}
-                    onChange={(e) =>
-                      setSettings({ ...settings, lidarrApiKey: e.target.value })
-                    }
+                    onChange={(e) => setSettings({ ...settings, lidarrApiKey: e.target.value })}
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Last.fm API Key (Optional)
-                  </label>
-                  <input
-                    type="password"
-                    className="input"
-                    placeholder="Your Last.fm API Key"
-                    value={settings.lastfmApiKey || ""}
-                    onChange={(e) =>
-                      setSettings({ ...settings, lastfmApiKey: e.target.value })
-                    }
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Contact Email (MusicBrainz)
-                  </label>
-                  <input
-                    type="email"
-                    className="input"
-                    placeholder="user@example.com"
-                    value={settings.contactEmail || ""}
-                    onChange={(e) =>
-                      setSettings({ ...settings, contactEmail: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
+              <div className="mt-8 pt-8 border-t border-gray-100 dark:border-gray-800 space-y-6">
+                <h4 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-primary-500" /> Default Artist Options
+                </h4>
 
-              <div className="border-t border-gray-100 dark:border-gray-800 pt-4 mt-4">
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Default Root Folder
-                </label>
-                <select
-                  className="input"
-                  value={settings.rootFolderPath || ""}
-                  onChange={(e) =>
-                    setSettings({ ...settings, rootFolderPath: e.target.value })
-                  }
-                >
-                  <option value="">Select a default folder...</option>
-                  {rootFolders.map((f) => (
-                    <option key={f.id} value={f.path}>
-                      {f.path} (
-                      {f.freeSpace
-                        ? `${(f.freeSpace / 1024 / 1024 / 1024).toFixed(2)} GB free`
-                        : "unknown"}
-                      )
-                    </option>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Root Folder</label>
+                    <select
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
+                      value={settings.rootFolderPath || ""}
+                      onChange={(e) => setSettings({ ...settings, rootFolderPath: e.target.value })}
+                    >
+                      <option value="">Select folder...</option>
+                      {rootFolders.map((f) => (
+                        <option key={f.id} value={f.path}>{f.path}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Quality Profile</label>
+                    <select
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
+                      value={settings.qualityProfileId || ""}
+                      onChange={(e) => setSettings({ ...settings, qualityProfileId: parseInt(e.target.value) || "" })}
+                    >
+                      <option value="">Select profile...</option>
+                      {qualityProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Metadata Profile</label>
+                    <select
+                      className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
+                      value={settings.metadataProfileId || ""}
+                      onChange={(e) => setSettings({ ...settings, metadataProfileId: parseInt(e.target.value) || "" })}
+                    >
+                      <option value="">Select profile...</option>
+                      {metadataProfiles.map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                  {[
+                    { id: 'monitored', label: 'Monitor Artist' },
+                    { id: 'searchForMissingAlbums', label: 'Search for missing albums on add' },
+                    { id: 'albumFolders', label: 'Create album folders' },
+                  ].map(opt => (
+                    <label key={opt.id} className="flex items-center justify-between p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 cursor-pointer group">
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{opt.label}</span>
+                      <div className="relative">
+                        <input
+                          type="checkbox"
+                          className="sr-only peer"
+                          checked={settings[opt.id]}
+                          onChange={(e) => setSettings({ ...settings, [opt.id]: e.target.checked })}
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500"></div>
+                      </div>
+                    </label>
                   ))}
-                </select>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Quality Profile
-                  </label>
-                  <select
-                    className="input"
-                    value={settings.qualityProfileId || ""}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        qualityProfileId: parseInt(e.target.value) || "",
-                      })
-                    }
-                  >
-                    <option value="">Select default...</option>
-                    {qualityProfiles.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Metadata Profile
-                  </label>
-                  <select
-                    className="input"
-                    value={settings.metadataProfileId || ""}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        metadataProfileId: parseInt(e.target.value) || "",
-                      })
-                    }
-                  >
-                    <option value="">Select default...</option>
-                    {metadataProfiles.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
                 </div>
               </div>
+            </div>
+          </section>
+        )}
 
-              <div className="space-y-3 pt-2">
-                <label className="flex items-center space-x-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    className="form-checkbox h-5 w-5 text-primary-600 rounded border-gray-300 dark:border-gray-700 dark:bg-gray-800"
-                    checked={settings.monitored}
-                    onChange={(e) =>
-                      setSettings({ ...settings, monitored: e.target.checked })
-                    }
-                  />
-                  <span className="text-gray-700 dark:text-gray-300">
-                    Monitor Artist
-                  </span>
-                </label>
+        {activeTab === "jobs" && (
+          <section className="space-y-6">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm">
+              <h3 className="text-lg font-black text-gray-900 dark:text-white mb-6">Jobs & Cache</h3>
 
-                <label className="flex items-center space-x-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    className="form-checkbox h-5 w-5 text-primary-600 rounded border-gray-300 dark:border-gray-700 dark:bg-gray-800"
-                    checked={settings.searchForMissingAlbums}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        searchForMissingAlbums: e.target.checked,
-                      })
-                    }
-                  />
-                  <span className="text-gray-700 dark:text-gray-300">
-                    Search for missing albums on add
-                  </span>
-                </label>
+              <div className="space-y-8">
+                <div className="p-6 bg-gray-50 dark:bg-gray-800 rounded-3xl border border-gray-100 dark:border-gray-700">
+                  <div className="flex items-center justify-between mb-6">
+                    <div>
+                      <h4 className="font-bold text-gray-900 dark:text-white">Discovery Refresh</h4>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Manage how often the discovery cache is updated.</p>
+                    </div>
+                    <button
+                      onClick={handleRefreshDiscovery}
+                      disabled={refreshingDiscovery || health?.discovery?.isUpdating}
+                      className="px-6 py-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-primary-500/20"
+                    >
+                      {health?.discovery?.isUpdating ? "Running..." : "Run Now"}
+                    </button>
+                  </div>
 
-                <label className="flex items-center space-x-3 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    className="form-checkbox h-5 w-5 text-primary-600 rounded border-gray-300 dark:border-gray-700 dark:bg-gray-800"
-                    checked={settings.albumFolders}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        albumFolders: e.target.checked,
-                      })
-                    }
-                  />
-                  <span className="text-gray-700 dark:text-gray-300">
-                    Create album folders
-                  </span>
-                </label>
-              </div>
-
-              <div className="pt-4">
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="btn btn-primary w-full flex items-center justify-center"
-                >
-                  <Save className="w-4 h-4 mr-2" />
-                  {saving ? "Saving..." : "Save Default Settings"}
-                </button>
-              </div>
-            </form>
-          </div>
-
-          <div className="card">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
-              <Info className="w-6 h-6 mr-2" />
-              System Status
-            </h2>
-            {loading ? (
-              <div className="text-gray-500 dark:text-gray-400">Loading...</div>
-            ) : health ? (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <span className="font-medium text-gray-700 dark:text-gray-300">
-                    Backend API
-                  </span>
-                  <div className="flex items-center">
-                    {health.status === "ok" ? (
-                      <>
-                        <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
-                        <span className="text-green-700 dark:text-green-400 font-medium">
-                          Connected
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
-                        <span className="text-red-700 dark:text-red-400 font-medium">
-                          Disconnected
-                        </span>
-                      </>
-                    )}
+                  <div className="flex items-center gap-4">
+                    <div className="flex-1 space-y-2">
+                      <label className="text-[10px] font-black uppercase text-gray-400 tracking-widest pl-1">Refresh Interval (Hours)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="168"
+                        className="w-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl py-2 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
+                        value={settings.discoveryRefreshInterval || 24}
+                        onChange={(e) => setSettings({ ...settings, discoveryRefreshInterval: parseInt(e.target.value) || 1 })}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs text-gray-500 mt-6">Last updated: {health?.discovery?.lastUpdated ? new Date(health.discovery.lastUpdated).toLocaleString() : 'Never'}</p>
+                    </div>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <span className="font-medium text-gray-700 dark:text-gray-300">
-                    Lidarr Connection
-                  </span>
-                  <div className="flex items-center">
-                    {health.lidarrConfigured && health.lidarrStatus === "connected" ? (
-                      <>
-                        <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
-                        <span className="text-green-700 dark:text-green-400 font-medium">
-                          Connected
-                        </span>
-                      </>
-                    ) : health.lidarrConfigured ? (
-                      <>
-                        <AlertCircle className="w-5 h-5 text-orange-500 mr-2" />
-                        <span className="text-orange-700 dark:text-orange-400 font-medium">
-                          Unreachable
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-5 h-5 text-yellow-500 mr-2" />
-                        <span className="text-yellow-700 dark:text-yellow-400 font-medium">
-                          Not Configured
-                        </span>
-                      </>
-                    )}
+                <div className="p-6 bg-red-50/50 dark:bg-red-900/10 rounded-3xl border border-red-100 dark:border-red-900/30 flex items-center justify-between">
+                  <div>
+                    <h4 className="font-bold text-red-700 dark:text-red-400">Clear Cache</h4>
+                    <p className="text-xs text-red-600/70 dark:text-red-400/60">Reset all discovery recommendations and image caches.</p>
                   </div>
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                  <span className="font-medium text-gray-700 dark:text-gray-300">
-                    Last.fm API
-                  </span>
-                  <div className="flex items-center">
-                    {health.lastfmConfigured ? (
-                      <>
-                        <CheckCircle className="w-5 h-5 text-green-500 mr-2" />
-                        <span className="text-green-700 dark:text-green-400 font-medium">
-                          Configured
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="w-5 h-5 text-gray-400 mr-2" />
-                        <span className="text-gray-500 dark:text-gray-400 font-medium">
-                          Optional
-                        </span>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {health.timestamp && (
-                  <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                    <span className="font-medium text-gray-700 dark:text-gray-300">
-                      Last Checked
-                    </span>
-                    <span className="text-gray-600 dark:text-gray-400">
-                      {new Date(health.timestamp).toLocaleString()}
-                    </span>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="text-red-600 dark:text-red-400">
-                Failed to load health status
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="space-y-8">
-          {health?.discovery && (
-            <div className="card">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-                  Discovery Engine
-                </h3>
-                <div className="flex gap-2">
                   <button
                     onClick={handleClearCache}
-                    disabled={clearingCache || health.discovery.isUpdating}
-                    className="btn btn-secondary btn-sm text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+                    disabled={clearingCache}
+                    className="px-6 py-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl text-xs font-black transition-all shadow-lg shadow-red-500/20"
                   >
-                    <Trash2 className="w-3.5 h-3.5 mr-2" />
-                    Clear Cache
-                  </button>
-                  <button
-                    onClick={handleRefreshDiscovery}
-                    disabled={
-                      refreshingDiscovery || health.discovery.isUpdating
-                    }
-                    className="btn btn-secondary btn-sm"
-                  >
-                    <RefreshCw
-                      className={`w-3.5 h-3.5 mr-2 ${refreshingDiscovery || health.discovery.isUpdating ? "animate-spin" : ""}`}
-                    />
-                    {health.discovery.isUpdating ? "Updating..." : "Refresh"}
+                    Clear All Cache
                   </button>
                 </div>
               </div>
+            </div>
+          </section>
+        )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                  <div className="flex items-center text-gray-500 dark:text-gray-400 text-xs mb-1">
-                    <Sparkles className="w-3 h-3 mr-1" /> Recommendations
-                  </div>
-                  <div className="text-xl font-bold">
-                    {health.discovery.recommendationsCount}
-                  </div>
-                </div>
-
-                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                  <div className="flex items-center text-gray-500 dark:text-gray-400 text-xs mb-1">
-                    <TrendingUp className="w-3 h-3 mr-1" /> Global Top
-                  </div>
-                  <div className="text-xl font-bold">
-                    {health.discovery.globalTopCount}
-                  </div>
-                </div>
-
-                <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
-                  <div className="flex items-center text-gray-500 dark:text-gray-400 text-xs mb-1">
-                    <Image className="w-3 h-3 mr-1" /> Cached Images
-                  </div>
-                  <div className="text-xl font-bold">
-                    {health.discovery.cachedImagesCount}
-                  </div>
+        {activeTab === "about" && (
+          <section className="space-y-6">
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm">
+              <div className="flex items-center gap-6 mb-8">
+                <img src="/arralogo.svg" alt="Aurral" className="w-16 h-16" />
+                <div>
+                  <h3 className="text-2xl font-black text-gray-900 dark:text-white">Aurral</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Version 1.0.0 "Overseerr Style"</p>
                 </div>
               </div>
 
-              {health.discovery.lastUpdated && (
-                <div className="text-xs text-gray-400 text-right">
-                  Cache last built:{" "}
-                  {new Date(health.discovery.lastUpdated).toLocaleString()}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-8 border-t border-gray-100 dark:border-gray-800">
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase text-gray-400 tracking-widest">System Health</h4>
+                  {health && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-500">Backend API</span>
+                        <span className={`font-bold ${health.status === 'ok' ? 'text-green-500' : 'text-red-500'}`}>{health.status === 'ok' ? 'Connected' : 'Error'}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-500">Lidarr Connection</span>
+                        <span className={`font-bold ${health.lidarrStatus === 'connected' ? 'text-green-500' : 'text-yellow-500'}`}>{health.lidarrStatus === 'connected' ? 'Connected' : 'Check Settings'}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-gray-500">Last.fm Integration</span>
+                        <span className={`font-bold ${health.lastfmConfigured ? 'text-green-500' : 'text-gray-400'}`}>{health.lastfmConfigured ? 'Configured' : 'Missing Key'}</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-          )}
 
-          <div className="card overflow-hidden">
-            <div className="flex items-center space-x-4 mb-6">
-              <img
-                src="/arralogo.svg"
-                alt="Aurral Logo"
-                className="w-12 h-12"
-              />
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                  About Aurral
-                </h2>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Version 1.0.0
-                </p>
-              </div>
-            </div>
-            <div className="space-y-4 text-gray-700 dark:text-gray-300">
-              <p>
-                Aurral is a streamlined artist request manager designed to
-                simplify expanding your Lidarr music library.
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6 pt-6 border-t border-gray-100 dark:border-gray-800">
-                <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
-                    Data Sources
-                  </h4>
-                  <ul className="text-sm space-y-1">
-                    <li>MusicBrainz (Artist Discovery)</li>
-                    <li>Last.fm (Metadata & Images)</li>
-                    <li>Lidarr API (Library Management)</li>
-                  </ul>
-                </div>
-                <div>
-                  <h4 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-2">
-                    Stack
-                  </h4>
-                  <p className="text-sm">
-                    Built with React, Tailwind CSS, and Node.js.
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black uppercase text-gray-400 tracking-widest">About the Stack</h4>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Aurral is built with a modern React frontend and a robust Node.js backend. It leverages MusicBrainz and Last.fm for top-tier metadata and discovery, and seamlessly integrates with the Lidarr API for media library automation.
                   </p>
                 </div>
               </div>
             </div>
-          </div>
-        </div>
+          </section>
+        )}
       </div>
 
-      {!health?.lidarrConfigured && !loading && (
-        <div className="card bg-primary-50 dark:bg-primary-900/10 border-primary-200 dark:border-primary-500/20 mt-8">
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4 flex items-center">
-            <Sparkles className="w-6 h-6 mr-2 text-primary-500" />
-            Initial Setup Required
-          </h2>
-          <p className="text-gray-700 dark:text-gray-300 mb-6">
-            Welcome to Aurral! To get started, please configure your Lidarr connection above.
-            Once configured, you'll be able to search for artists and manage your library.
-          </p>
-          <div className="flex items-center text-sm text-primary-700 dark:text-primary-400">
-            <Info className="w-4 h-4 mr-2" />
-            You can find your Lidarr API key in Lidarr Settings → General → Security.
-          </div>
-        </div>
-      )}
+      {/* Floating Save Button */}
+      <div className="sticky bottom-6 mt-12 flex justify-end z-40 pointer-events-none">
+        <button
+          onClick={handleSaveSettings}
+          disabled={saving}
+          className="pointer-events-auto flex items-center gap-2 px-6 py-3 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white rounded-xl font-bold shadow-xl shadow-primary-500/30 transition-all hover:scale-[1.02] active:scale-95 text-sm"
+        >
+          {saving ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" />
+              Save Changes
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }

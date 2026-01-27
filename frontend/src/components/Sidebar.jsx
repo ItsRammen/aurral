@@ -10,9 +10,11 @@ import {
   X,
   History,
   LogOut,
+  User,
 } from "lucide-react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useAuth } from "../contexts/AuthContext";
+import ProfileDropdown from "./ProfileDropdown";
 
 function Sidebar({
   isHealthy,
@@ -23,7 +25,7 @@ function Sidebar({
 }) {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
-  const { authRequired, logout } = useAuth();
+  const { hasPermission, logout, isAuthenticated } = useAuth(); // Assuming authRequired was replaced or is handled by isAuthenticated
 
   const isActive = (path) => {
     if (path === "/discover" && location.pathname === "/") return true;
@@ -34,8 +36,12 @@ function Sidebar({
     { path: "/discover", label: "Discover", icon: Sparkles },
     { path: "/library", label: "Library", icon: Library },
     { path: "/requests", label: "Requests", icon: History },
-    { path: "/settings", label: "Settings", icon: Settings },
   ];
+
+  if (hasPermission('admin')) {
+    navItems.push({ path: "/users", label: "Users", icon: User });
+    navItems.push({ path: "/settings", label: "Settings", icon: Settings });
+  }
 
   return (
     <>
@@ -47,9 +53,8 @@ function Sidebar({
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col border-r border-gray-200 dark:border-gray-800 transition-transform duration-300 ease-in-out pl-safe pt-safe pb-safe ${
-          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        }`}
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 flex flex-col border-r border-gray-200 dark:border-gray-800 transition-transform duration-300 ease-in-out pl-safe pt-safe pb-safe ${isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+          }`}
       >
         <div className="h-16 flex items-center justify-between px-6 border-b border-gray-200 dark:border-b-gray-800">
           <Link to="/" className="flex items-center space-x-3 group">
@@ -80,18 +85,16 @@ function Sidebar({
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 group ${
-                  active
-                    ? "bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-500/20"
-                    : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 border border-transparent"
-                }`}
+                className={`flex items-center space-x-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 group ${active
+                  ? "bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-500/20"
+                  : "text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-100 border border-transparent"
+                  }`}
               >
                 <Icon
-                  className={`w-5 h-5 transition-transform group-hover:scale-110 ${
-                    active
-                      ? "text-primary-600 dark:text-primary-400"
-                      : "text-gray-500 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-100"
-                  }`}
+                  className={`w-5 h-5 transition-transform group-hover:scale-110 ${active
+                    ? "text-primary-600 dark:text-primary-400"
+                    : "text-gray-500 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-100"
+                    }`}
                 />
                 <span>{item.label}</span>
               </Link>
@@ -107,58 +110,34 @@ function Sidebar({
               </span>
               <div className="flex items-center space-x-2">
                 <div
-                  className={`w-2 h-2 rounded-full ${
-                    isHealthy === null
-                      ? "bg-gray-400 dark:bg-gray-500"
-                      : isHealthy && lidarrConfigured && lidarrStatus === "connected"
-                        ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"
-                        : isHealthy && lidarrConfigured && lidarrStatus !== "connected"
-                           ? "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]"
+                  className={`w-2 h-2 rounded-full ${isHealthy === null
+                    ? "bg-gray-400 dark:bg-gray-500"
+                    : isHealthy && lidarrConfigured && lidarrStatus === "connected"
+                      ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]"
+                      : isHealthy && lidarrConfigured && lidarrStatus !== "connected"
+                        ? "bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.6)]"
                         : isHealthy
                           ? "bg-yellow-500 shadow-[0_0_8px_rgba(234,179,8,0.6)]"
                           : "bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]"
-                  }`}
+                    }`}
                 />
                 <span className="text-xs text-gray-500 dark:text-gray-400">
                   {isHealthy === null
                     ? "Checking..."
                     : isHealthy && lidarrConfigured && lidarrStatus === "connected"
                       ? "Online"
-                       : isHealthy && lidarrConfigured && lidarrStatus !== "connected"
+                      : isHealthy && lidarrConfigured && lidarrStatus !== "connected"
                         ? "Lidarr Down"
-                      : isHealthy
-                        ? "Config"
-                        : "Offline"}
+                        : isHealthy
+                          ? "Config"
+                          : "Offline"}
                 </span>
               </div>
             </div>
+          </div>
 
-            <button
-              onClick={toggleTheme}
-              className="flex items-center justify-center w-full px-4 py-2 space-x-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors shadow-sm"
-            >
-              {theme === "dark" ? (
-                <>
-                  <Sun className="w-4 h-4" />
-                  <span>Light Mode</span>
-                </>
-              ) : (
-                <>
-                  <Moon className="w-4 h-4" />
-                  <span>Dark Mode</span>
-                </>
-              )}
-            </button>
-            
-            {authRequired && (
-              <button
-                onClick={logout}
-                className="flex items-center justify-center w-full px-4 py-2 space-x-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors shadow-sm"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Logout</span>
-              </button>
-            )}
+          <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-800">
+            <ProfileDropdown />
           </div>
         </div>
       </aside>

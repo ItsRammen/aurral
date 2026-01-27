@@ -10,6 +10,8 @@ import { Low } from "lowdb";
 import { JSONFile } from "lowdb/node";
 import fs from "fs";
 import path from "path";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 
 dotenv.config();
 
@@ -40,6 +42,7 @@ const defaultData = {
   discovery: {
     recommendations: [],
     globalTop: [],
+    globalTopTracks: [],
     basedOn: [],
     topTags: [],
     topGenres: [],
@@ -47,6 +50,8 @@ const defaultData = {
   },
   images: {},
   requests: [],
+  likes: [],
+  users: [],
   settings: {
     rootFolderPath: null,
     qualityProfileId: null,
@@ -58,6 +63,10 @@ const defaultData = {
     lidarrApiKey: process.env.LIDARR_API_KEY || "",
     lastfmApiKey: process.env.LASTFM_API_KEY || "",
     contactEmail: process.env.CONTACT_EMAIL || "user@example.com",
+    discoveryRefreshInterval: 24,
+    appName: "Aurral",
+    appUrl: "",
+    defaultPermissions: ["request"],
   },
 };
 
@@ -98,28 +107,236 @@ app.use(cors());
 app.use(helmet());
 app.use(express.json());
 
-if (process.env.AUTH_PASSWORD) {
-  const adminUser = process.env.AUTH_USER || "admin";
-  const validPasswords = process.env.AUTH_PASSWORD.split(",")
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
+const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key-change-this";
 
-  const auth = basicAuth({
-    authorizer: (username, password) => {
-      const userMatches = basicAuth.safeCompare(username, adminUser);
-      const passwordMatches = validPasswords.some((p) =>
-        basicAuth.safeCompare(password, p),
-      );
-      return userMatches && passwordMatches;
-    },
-    challenge: false,
+// Auth Middleware
+const authMiddleware = async (req, res, next) => {
+  if (req.path === "/api/health" || req.path === "/api/auth/login" || req.path === "/api/auth/init") {
+    return next();
+  }
+
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) {
+    return res.status(401).json({ error: "No token provided" });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const users = db.data.users || [];
+    const user = users.find((u) => u.id === decoded.id);
+    if (!user) {
+      return res.status(401).json({ error: "Invalid token" });
+    }
+    req.user = user;
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: "Invalid token" });
+  }
+};
+
+app.use(authMiddleware);
+
+// Permission Middleware
+const requirePermission = (permission) => {
+  return (req, res, next) => {
+    if (!req.user) { // Should be caught by authMiddleware, but for safety
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+
+    // Admin has all permissions
+    if (req.user.permissions.includes("admin")) {
+      return next();
+    }
+
+    if (!req.user.permissions.includes(permission)) {
+      return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+    }
+    next();
+  };
+};
+
+// Auth Routes
+app.post("/api/auth/login", async (req, res) => {
+  const { username, password } = req.body;
+  const users = db.data.users || [];
+  const user = users.find((u) => u.username === username);
+
+  if (!user || !(await bcrypt.compare(password, user.password))) {
+    return res.status(401).json({ error: "Invalid credentials" });
+  }
+
+  const token = jwt.sign({ id: user.id, username: user.username, email: user.email, lastfmApiKey: user.lastfmApiKey, permissions: user.permissions }, JWT_SECRET, {
+    expiresIn: "7d",
   });
 
-  app.use((req, res, next) => {
-    if (req.path === "/api/health") return next();
-    return auth(req, res, next);
+  res.json({ token, user: { id: user.id, username: user.username, email: user.email, lastfmApiKey: user.lastfmApiKey, permissions: user.permissions } });
+});
+
+app.post("/api/auth/init", async (req, res) => {
+  if ((db.data.users || []).length > 0) {
+    return res.status(400).json({ error: "Setup already completed" });
+  }
+
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: "Username and password required" });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const newUser = {
+    id: crypto.randomUUID(),
+    username,
+    password: hashedPassword,
+    permissions: ["admin"],
+    created_at: new Date().toISOString(),
+  };
+
+  db.data.users = db.data.users || [];
+  db.data.users.push(newUser);
+  await db.write();
+
+  const token = jwt.sign({ id: newUser.id, username: newUser.username, email: newUser.email, lastfmApiKey: newUser.lastfmApiKey, permissions: newUser.permissions }, JWT_SECRET, {
+    expiresIn: "7d",
   });
-}
+
+  res.json({ token, user: { id: newUser.id, username: newUser.username, email: newUser.email, lastfmApiKey: newUser.lastfmApiKey, permissions: newUser.permissions } });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  const { password, ...userWithoutPass } = req.user;
+  res.json(userWithoutPass);
+});
+
+app.put("/api/auth/profile", async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+
+  const { email, password, lastfmApiKey } = req.body;
+  const userIndex = db.data.users.findIndex(u => u.id === req.user.id);
+
+  if (userIndex === -1) return res.status(404).json({ error: "User not found" });
+
+  if (email !== undefined) db.data.users[userIndex].email = email;
+  if (lastfmApiKey !== undefined) db.data.users[userIndex].lastfmApiKey = lastfmApiKey;
+  if (password) {
+    db.data.users[userIndex].password = await bcrypt.hash(password, 10);
+  }
+
+  await db.write();
+  const { password: _, ...userWithoutPass } = db.data.users[userIndex];
+  res.json(userWithoutPass);
+});
+
+app.get("/api/users/:id/stats", async (req, res) => {
+  const { id } = req.params;
+  const requests = db.data.requests || [];
+  const likes = db.data.likes || [];
+
+  const userRequests = requests.filter(r => r.requestedByUserId === id);
+  const userLikes = likes.filter(l => l.userId === id);
+
+  res.json({
+    totalRequests: userRequests.length,
+    totalLikes: userLikes.length,
+    recentRequests: userRequests.slice(-10).reverse()
+  });
+});
+
+// User Management Routes (Admin Only)
+app.get("/api/users", (req, res, next) => {
+  if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_users")) return next();
+  res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+}, (req, res) => {
+  const requests = db.data.requests || [];
+  const users = (db.data.users || []).map(({ password, ...u }) => {
+    const requestCount = requests.filter(r => r.requestedByUserId === u.id).length;
+    return { ...u, requestCount };
+  });
+  res.json(users);
+});
+
+app.post("/api/users", (req, res, next) => {
+  if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_users")) return next();
+  res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+}, async (req, res) => {
+  const { username, password, email, permissions } = req.body;
+
+  if (db.data.users.find(u => u.username === username)) {
+    return res.status(400).json({ error: "Username already exists" });
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const newUser = {
+    id: crypto.randomUUID(),
+    username,
+    email: email || null,
+    password: hashedPassword,
+    permissions: permissions || ["read_only"], // Default role
+    created_at: new Date().toISOString(),
+  };
+
+  db.data.users.push(newUser);
+  await db.write();
+
+  const { password: _, ...userWithoutPass } = newUser;
+  res.status(201).json(userWithoutPass);
+});
+
+app.put("/api/users/:id", (req, res, next) => {
+  if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_users")) return next();
+  res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+}, async (req, res) => {
+  const { id } = req.params;
+  const { username, password, email, permissions } = req.body;
+  const userIndex = db.data.users.findIndex(u => u.id === id);
+
+  if (userIndex === -1) return res.status(404).json({ error: "User not found" });
+
+  // Prevent removing last admin
+  if (db.data.users[userIndex].permissions.includes('admin') &&
+    permissions && !permissions.includes('admin')) {
+    const adminCount = db.data.users.filter(u => u.permissions.includes('admin')).length;
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: "Cannot remove the last admin" });
+    }
+  }
+
+  if (username) db.data.users[userIndex].username = username;
+  if (email !== undefined) db.data.users[userIndex].email = email;
+  if (password) {
+    db.data.users[userIndex].password = await bcrypt.hash(password, 10);
+  }
+  if (permissions) db.data.users[userIndex].permissions = permissions;
+
+  await db.write();
+  const { password: _, ...userWithoutPass } = db.data.users[userIndex];
+  res.json(userWithoutPass);
+});
+
+app.delete("/api/users/:id", (req, res, next) => {
+  if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_users")) return next();
+  res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+}, async (req, res) => {
+  const { id } = req.params;
+  const userIndex = db.data.users.findIndex(u => u.id === id);
+
+  if (userIndex === -1) return res.status(404).json({ error: "User not found" });
+
+  if (db.data.users[userIndex].permissions.includes('admin')) {
+    const adminCount = db.data.users.filter(u => u.permissions.includes('admin')).length;
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: "Cannot delete the last admin" });
+    }
+  }
+
+  db.data.users.splice(userIndex, 1);
+  await db.write();
+  res.json({ success: true });
+});
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -131,7 +348,7 @@ app.get("/api/settings", (req, res) => {
   res.json(db.data.settings || defaultData.settings);
 });
 
-app.post("/api/settings", async (req, res) => {
+app.post("/api/settings", requirePermission("admin"), async (req, res) => {
   try {
     const {
       rootFolderPath,
@@ -144,10 +361,15 @@ app.post("/api/settings", async (req, res) => {
       lidarrApiKey: newLidarrApiKey,
       lastfmApiKey: newLastfmApiKey,
       contactEmail: newContactEmail,
+      discoveryRefreshInterval,
+      appName,
+      appUrl,
+      defaultPermissions,
     } = req.body;
 
     const oldLidarrUrl = db.data.settings?.lidarrUrl;
     const oldLidarrApiKey = db.data.settings?.lidarrApiKey;
+    const oldDiscoveryRefreshInterval = db.data.settings?.discoveryRefreshInterval;
 
     db.data.settings = {
       ...(db.data.settings || defaultData.settings),
@@ -161,6 +383,10 @@ app.post("/api/settings", async (req, res) => {
       lidarrApiKey: newLidarrApiKey,
       lastfmApiKey: newLastfmApiKey,
       contactEmail: newContactEmail,
+      discoveryRefreshInterval: parseInt(discoveryRefreshInterval) || 24,
+      appName: appName || "Aurral",
+      appUrl: appUrl || "",
+      defaultPermissions: Array.isArray(defaultPermissions) ? defaultPermissions : ["request"],
     };
     await db.write();
 
@@ -169,6 +395,10 @@ app.post("/api/settings", async (req, res) => {
       lidarrUrl = (newLidarrUrl || "http://localhost:8686").replace(/\/+$/, '');
       LIDARR_API_KEY = newLidarrApiKey || "";
       await probeLidarrUrl();
+    }
+
+    if (discoveryRefreshInterval !== oldDiscoveryRefreshInterval) {
+      restartDiscoverySchedule();
     }
 
     res.json(db.data.settings);
@@ -263,8 +493,8 @@ const musicbrainzRequest = mbLimiter.wrap(async (endpoint, params = {}) => {
   }
 });
 
-const lastfmRequest = lastfmLimiter.wrap(async (method, params = {}) => {
-  const apiKey = LASTFM_API_KEY();
+const lastfmRequest = lastfmLimiter.wrap(async (method, params = {}, userApiKey = null) => {
+  const apiKey = userApiKey || LASTFM_API_KEY();
   if (!apiKey) return null;
 
   console.log(`Last.fm Request: ${method}`);
@@ -354,8 +584,8 @@ app.get("/api/health", async (req, res) => {
         ? Object.keys(db.data.images).length
         : 0,
     },
-    authRequired: !!process.env.AUTH_PASSWORD,
-    authUser: process.env.AUTH_USER || "admin",
+    authRequired: (db.data.users || []).length > 0,
+    needsSetup: (db.data.users || []).length === 0,
     timestamp: new Date().toISOString(),
   });
 });
@@ -378,7 +608,7 @@ app.get("/api/search/artists", async (req, res) => {
           artist: query,
           limit: limitInt,
           page,
-        });
+        }, req.user?.lastfmApiKey);
 
         if (lastfmData?.results?.artistmatches?.artist) {
           const artists = Array.isArray(lastfmData.results.artistmatches.artist)
@@ -445,6 +675,39 @@ app.get("/api/search/artists", async (req, res) => {
   }
 });
 
+app.get("/api/artists/likes", async (req, res) => {
+  const userLikes = (db.data.likes || [])
+    .filter(l => l.userId === req.user.id)
+    .map(l => l.mbid);
+  res.json(userLikes);
+});
+
+app.post("/api/artists/:mbid/like", async (req, res) => {
+  const { mbid } = req.params;
+  const { name, image } = req.body;
+
+  if (!mbid) return res.status(400).json({ error: "MBID is required" });
+
+  db.data.likes = db.data.likes || [];
+  const existingIdx = db.data.likes.findIndex(l => l.mbid === mbid && l.userId === req.user.id);
+
+  if (existingIdx > -1) {
+    db.data.likes.splice(existingIdx, 1);
+    await db.write();
+    return res.json({ liked: false });
+  } else {
+    db.data.likes.push({
+      mbid,
+      name: name || "Unknown Artist",
+      image: image || null,
+      userId: req.user.id,
+      likedAt: new Date().toISOString()
+    });
+    await db.write();
+    return res.json({ liked: true });
+  }
+});
+
 app.get("/api/artists/:mbid", async (req, res) => {
   try {
     const { mbid } = req.params;
@@ -455,7 +718,7 @@ app.get("/api/artists/:mbid", async (req, res) => {
 
     if (LASTFM_API_KEY) {
       try {
-        const lastfmData = await lastfmRequest("artist.getInfo", { mbid });
+        const lastfmData = await lastfmRequest("artist.getInfo", { mbid }, req.user?.lastfmApiKey);
         if (lastfmData?.artist) {
           const a = lastfmData.artist;
           const artist = {
@@ -486,7 +749,7 @@ app.get("/api/artists/:mbid", async (req, res) => {
             const albumData = await lastfmRequest("artist.getTopAlbums", {
               mbid,
               limit: 50,
-            });
+            }, req.user?.lastfmApiKey);
             if (albumData?.topalbums?.album) {
               const albums = Array.isArray(albumData.topalbums.album)
                 ? albumData.topalbums.album
@@ -574,7 +837,14 @@ app.get("/api/artists/:mbid", async (req, res) => {
       inc: "aliases+tags+ratings+genres+release-groups",
     });
 
-    res.json(data);
+    const requests = db.data.requests || [];
+    const match = requests.find(r => r.mbid.toLowerCase() === mbid.toLowerCase());
+
+    res.json({
+      ...data,
+      requestedBy: match ? match.requestedBy : null,
+      requestedByUserId: match ? match.requestedByUserId : null
+    });
   } catch (error) {
     res.status(500).json({
       error: "Failed to fetch artist details",
@@ -583,7 +853,7 @@ app.get("/api/artists/:mbid", async (req, res) => {
   }
 });
 
-const getArtistImage = async (mbid) => {
+const getArtistImage = async (mbid, userApiKey = null) => {
   if (!mbid) return { url: null, images: [] };
 
   if (db.data.images[mbid]) {
@@ -613,7 +883,7 @@ const getArtistImage = async (mbid) => {
   const fetchPromise = (async () => {
     if (LASTFM_API_KEY) {
       try {
-        const lastfmData = await lastfmRequest("artist.getInfo", { mbid });
+        const lastfmData = await lastfmRequest("artist.getInfo", { mbid }, userApiKey);
         if (lastfmData?.artist?.image) {
           const images = lastfmData.artist.image
             .filter(
@@ -713,7 +983,7 @@ app.get("/api/artists/:mbid/cover", async (req, res) => {
       return res.status(400).json({ error: "Invalid MBID format" });
     }
 
-    const result = await getArtistImage(mbid);
+    const result = await getArtistImage(mbid, req.user?.lastfmApiKey);
     res.json({ images: result.images });
   } catch (error) {
     res.status(500).json({
@@ -741,7 +1011,7 @@ app.get("/api/artists/:mbid/similar", async (req, res) => {
         const data = await lastfmRequest("artist.getSimilar", {
           mbid,
           limit,
-        });
+        }, req.user?.lastfmApiKey);
 
         if (data?.similarartists?.artist) {
           const artists = Array.isArray(data.similarartists.artist)
@@ -825,7 +1095,18 @@ app.get("/api/artists/:mbid/similar", async (req, res) => {
 app.get("/api/lidarr/artists", async (req, res) => {
   try {
     const artists = await getCachedLidarrArtists();
-    res.json(artists);
+    const requests = db.data.requests || [];
+
+    const enrichedArtists = artists.map(artist => {
+      const match = requests.find(r => r.mbid.toLowerCase() === (artist.foreignArtistId || "").toLowerCase());
+      return {
+        ...artist,
+        requestedBy: match ? match.requestedBy : null,
+        requestedByUserId: match ? match.requestedByUserId : null
+      };
+    });
+
+    res.json(enrichedArtists);
   } catch (error) {
     res.status(500).json({
       error: "Failed to fetch Lidarr artists",
@@ -868,7 +1149,14 @@ app.get("/api/lidarr/artists/:id", async (req, res) => {
   try {
     const { id } = req.params;
     const artist = await lidarrRequest(`/artist/${id}`);
-    res.json(artist);
+    const requests = db.data.requests || [];
+    const match = requests.find(r => r.mbid.toLowerCase() === (artist.foreignArtistId || "").toLowerCase());
+
+    res.json({
+      ...artist,
+      requestedBy: match ? match.requestedBy : null,
+      requestedByUserId: match ? match.requestedByUserId : null
+    });
   } catch (error) {
     res.status(error.response?.status || 500).json({
       error: "Failed to fetch Lidarr artist",
@@ -886,14 +1174,18 @@ app.get("/api/lidarr/lookup/:mbid", async (req, res) => {
     }
 
     const artists = await getCachedLidarrArtists();
-
     const existingArtist = artists.find(
       (artist) => artist.foreignArtistId === mbid,
     );
 
+    const requests = db.data.requests || [];
+    const pendingRequest = requests.find(r => r.mbid === mbid && r.status === "pending_approval");
+
     res.json({
       exists: !!existingArtist,
       artist: existingArtist || null,
+      pending: !!pendingRequest,
+      request: pendingRequest || null
     });
   } catch (error) {
     res.status(500).json({
@@ -927,7 +1219,7 @@ app.post("/api/lidarr/lookup/batch", async (req, res) => {
   }
 });
 
-app.post("/api/lidarr/artists", async (req, res) => {
+app.post("/api/lidarr/artists", requirePermission("request"), async (req, res) => {
   try {
     const {
       foreignArtistId,
@@ -1013,12 +1305,21 @@ app.post("/api/lidarr/artists", async (req, res) => {
       }));
     }
 
-    console.log("Adding artist to Lidarr with data:", JSON.stringify(artistData, null, 2));
-    let result = await lidarrRequest("/artist", "POST", artistData);
-    console.log("Lidarr response:", JSON.stringify(result, null, 2));
+    const isAuthorized = req.user.permissions.includes('admin') ||
+      req.user.permissions.includes('auto_approve') ||
+      req.user.permissions.includes('manage_requests');
+    let result = { id: null };
+
+    if (isAuthorized) {
+      console.log("Adding artist to Lidarr with data:", JSON.stringify(artistData, null, 2));
+      result = await lidarrRequest("/artist", "POST", artistData);
+      console.log("Lidarr response:", JSON.stringify(result, null, 2));
+    } else {
+      console.log(`User ${req.user.username} (ID: ${req.user.id}) is NOT authorized for auto-approval. Staging request...`);
+    }
 
     // Bug fix: If artist was added as unmonitored despite being requested as monitored (Lidarr Bug #3597)
-    if (isMonitored && result.id && !result.monitored) {
+    if (isAuthorized && isMonitored && result.id && !result.monitored) {
       console.log(`Lidarr Bug detected: Artist ${result.id} added as unmonitored. Fixing...`);
       try {
         result = await lidarrRequest(`/artist/${result.id}`, "PUT", {
@@ -1031,7 +1332,7 @@ app.post("/api/lidarr/artists", async (req, res) => {
     }
 
     // Explicitly trigger search if requested
-    if (searchMissing && result.id) {
+    if (isAuthorized && searchMissing && result.id) {
       try {
         await lidarrRequest("/command", "POST", {
           name: "ArtistSearch",
@@ -1044,11 +1345,24 @@ app.post("/api/lidarr/artists", async (req, res) => {
     }
 
     const newRequest = {
+      id: crypto.randomUUID(),
       mbid: foreignArtistId,
       name: artistName,
       image: req.body.image || null,
       requestedAt: new Date().toISOString(),
-      status: "requested",
+      requestedBy: req.user.username,
+      requestedByUserId: req.user.id,
+      status: isAuthorized ? "requested" : "pending_approval",
+      lidarrId: result.id || null,
+      requestData: isAuthorized ? null : {
+        ...req.body,
+        qualityProfileId: qualityProfile,
+        metadataProfileId: metadataProfile,
+        rootFolderPath: rootFolder,
+        monitored: isMonitored,
+        albumFolders: useAlbumFolders,
+        searchForMissingAlbums: searchMissing
+      }
     };
 
     db.data.requests = db.data.requests || [];
@@ -1063,10 +1377,26 @@ app.post("/api/lidarr/artists", async (req, res) => {
     } else {
       db.data.requests.push(newRequest);
     }
+
+    // Auto-like the artist for the user
+    db.data.likes = db.data.likes || [];
+    const existingLike = db.data.likes.find(
+      (l) => l.mbid === foreignArtistId && l.userId === req.user.id
+    );
+    if (!existingLike) {
+      db.data.likes.push({
+        mbid: foreignArtistId,
+        name: artistName,
+        image: req.body.image || null,
+        userId: req.user.id,
+        likedAt: new Date().toISOString(),
+      });
+    }
+
     await db.write();
 
     lastLidarrFetch = 0;
-    res.status(201).json(result);
+    res.status(201).json(isAuthorized ? result : { message: "Request submitted for approval", pending: true });
   } catch (error) {
     res.status(error.response?.status || 500).json({
       error: "Failed to add artist to Lidarr",
@@ -1128,7 +1458,7 @@ app.get("/api/requests", async (req, res) => {
   }
 });
 
-app.delete("/api/requests/:mbid", async (req, res) => {
+app.delete("/api/requests/:mbid", requirePermission("request"), async (req, res) => {
   const { mbid } = req.params;
 
   if (!UUID_REGEX.test(mbid)) {
@@ -1138,6 +1468,138 @@ app.delete("/api/requests/:mbid", async (req, res) => {
   db.data.requests = (db.data.requests || []).filter((r) => r.mbid !== mbid);
   await db.write();
   res.json({ success: true });
+});
+
+app.post("/api/requests/:id/approve", (req, res, next) => {
+  if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_requests")) return next();
+  res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+}, async (req, res) => {
+  const { id } = req.params;
+  const request = db.data.requests.find(r => r.id === id);
+
+  if (!request) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  if (request.status !== "pending_approval") {
+    return res.status(400).json({ error: "Request is not pending approval" });
+  }
+
+  try {
+    // Trigger Lidarr addition using the stored requestData
+    // We need to internally call the logic or re-use the function.
+    // Since the logic is inside the other route, we should refactor or duplicate the core logic.
+    // For expediency, I'll duplicate the simplified core Lidarr call here, 
+    // but ideally we should extract a `addArtistToLidarr` service function.
+
+    const { requestData } = request;
+    const savedSettings = db.data.settings || defaultData.settings;
+
+    // ... Reconstruct parameters ...
+    let rootFolder = requestData.rootFolderPath ?? savedSettings.rootFolderPath;
+    let qualityProfile = requestData.qualityProfileId ?? savedSettings.qualityProfileId;
+    let metadataProfile = requestData.metadataProfileId ?? savedSettings.metadataProfileId;
+    let isMonitored = requestData.monitored ?? savedSettings.monitored;
+    let searchMissing = requestData.searchForMissingAlbums ?? savedSettings.searchForMissingAlbums;
+    let useAlbumFolders = requestData.albumFolders ?? savedSettings.albumFolders;
+
+    // Validate config availability
+    if (!rootFolder || !qualityProfile || !metadataProfile) {
+      return res.status(400).json({ error: "System configuration (Root Folder/Profiles) missing" });
+    }
+
+    const artistData = {
+      foreignArtistId: request.mbid,
+      artistName: request.name,
+      qualityProfileId: qualityProfile,
+      metadataProfileId: metadataProfile,
+      rootFolderPath: rootFolder,
+      monitored: isMonitored,
+      albumFolder: useAlbumFolders,
+      addOptions: {
+        searchForMissingAlbums: searchMissing,
+        monitor: requestData.albums?.length > 0 ? "none" : (requestData.monitor || "all"),
+      },
+    };
+
+    if (requestData.albums && Array.isArray(requestData.albums)) {
+      artistData.albums = requestData.albums.map(album => ({
+        foreignAlbumId: album.id,
+        monitored: true,
+        addOptions: { searchForMissingAlbums: searchMissing }
+      }));
+    }
+
+    console.log("Approving artist add to Lidarr:", request.name);
+    const result = await lidarrRequest("/artist", "POST", artistData);
+
+    if (searchMissing && result.id) {
+      try { await lidarrRequest("/command", "POST", { name: "ArtistSearch", artistId: result.id }); } catch (e) { }
+    }
+
+    request.status = "processing";
+    request.lidarrId = result.id;
+    request.approvedAt = new Date().toISOString();
+    request.approvedBy = req.user.username;
+
+    await db.write();
+    res.json(request);
+
+  } catch (error) {
+    res.status(500).json({ error: "Failed to approve request", details: error.message });
+  }
+});
+
+app.post("/api/requests/:id/deny", (req, res, next) => {
+  if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_requests")) return next();
+  res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+}, async (req, res) => {
+  const { id } = req.params;
+  const requestIndex = db.data.requests.findIndex(r => r.id === id);
+
+  if (requestIndex === -1) {
+    return res.status(404).json({ error: "Request not found" });
+  }
+
+  db.data.requests[requestIndex].status = "denied";
+  db.data.requests[requestIndex].deniedAt = new Date().toISOString();
+  db.data.requests[requestIndex].deniedBy = req.user.username;
+
+  await db.write();
+  res.json(db.data.requests[requestIndex]);
+});
+
+app.get("/api/artists/likes", async (req, res) => {
+  const userLikes = (db.data.likes || [])
+    .filter(l => l.userId === req.user.id)
+    .map(l => l.mbid);
+  res.json(userLikes);
+});
+
+app.post("/api/artists/:mbid/like", async (req, res) => {
+  const { mbid } = req.params;
+  const { name, image } = req.body;
+
+  if (!mbid) return res.status(400).json({ error: "MBID is required" });
+
+  db.data.likes = db.data.likes || [];
+  const existingIdx = db.data.likes.findIndex(l => l.mbid === mbid && l.userId === req.user.id);
+
+  if (existingIdx > -1) {
+    db.data.likes.splice(existingIdx, 1);
+    await db.write();
+    return res.json({ liked: false });
+  } else {
+    db.data.likes.push({
+      mbid,
+      name: name || "Unknown Artist",
+      image: image || null,
+      userId: req.user.id,
+      likedAt: new Date().toISOString()
+    });
+    await db.write();
+    return res.json({ liked: true });
+  }
 });
 
 app.get("/api/lidarr/library/stats", async (req, res) => {
@@ -1218,7 +1680,18 @@ app.get("/api/lidarr/recent", async (req, res) => {
     const recent = [...artists]
       .sort((a, b) => new Date(b.added) - new Date(a.added))
       .slice(0, 20);
-    res.json(recent);
+
+    const requests = db.data.requests || [];
+    const enrichedRecent = recent.map(artist => {
+      const match = requests.find(r => r.mbid.toLowerCase() === (artist.foreignArtistId || "").toLowerCase());
+      return {
+        ...artist,
+        requestedBy: match ? match.requestedBy : null,
+        requestedByUserId: match ? match.requestedByUserId : null
+      };
+    });
+
+    res.json(enrichedRecent);
   } catch (error) {
     res
       .status(500)
@@ -1427,7 +1900,7 @@ const updateDiscoveryCache = async () => {
       lidarrArtists.map((a) => a.foreignArtistId),
     );
 
-    if (lidarrArtists.length === 0 && !LASTFM_API_KEY) {
+    if (lidarrArtists.length === 0 && !LASTFM_API_KEY()) {
       console.log(
         "No artists in Lidarr and no Last.fm key. Skipping discovery.",
       );
@@ -1437,16 +1910,20 @@ const updateDiscoveryCache = async () => {
 
     const tagCounts = new Map();
     const genreCounts = new Map();
-    const profileSample = [...lidarrArtists]
-      .sort(() => 0.5 - Math.random())
-      .slice(0, 25);
 
-    console.log(`Sampling tags/genres from ${profileSample.length} artists...`);
+    // Sample artists from the entire library for "Lidarr Wide" recommendations
+    const seedArtists = lidarrArtists
+      .sort(() => 0.5 - Math.random())
+      .slice(0, 50);
+
+    const profileSample = seedArtists.slice(0, 25);
+
+    console.log(`Sampling tags/genres from ${profileSample.length} library artists for Lidarr-wide discovery...`);
 
     await Promise.all(
       profileSample.map(async (artist) => {
         let foundTags = false;
-        if (LASTFM_API_KEY) {
+        if (LASTFM_API_KEY()) {
           try {
             const data = await lastfmRequest("artist.getTopTags", {
               mbid: artist.foreignArtistId,
@@ -1516,8 +1993,13 @@ const updateDiscoveryCache = async () => {
       `Identified Top Genres: ${discoveryCache.topGenres.join(", ")}`,
     );
 
-    if (LASTFM_API_KEY) {
+    if (LASTFM_API_KEY()) {
       console.log("Fetching Global Trending artists from Last.fm...");
+    } else {
+      console.warn("WARNING: Last.fm API key not configured. Global Trending and Top Hits will be empty.");
+    }
+
+    if (LASTFM_API_KEY()) {
       try {
         const topData = await lastfmRequest("chart.getTopArtists", {
           limit: 100,
@@ -1548,22 +2030,57 @@ const updateDiscoveryCache = async () => {
             `Found ${discoveryCache.globalTop.length} trending artists.`,
           );
         }
+
+        console.log("Fetching Global Top Tracks from Last.fm...");
+        const trackData = await lastfmRequest("chart.getTopTracks", {
+          limit: 100,
+        });
+        if (trackData?.tracks?.track) {
+          const tracks = Array.isArray(trackData.tracks.track)
+            ? trackData.tracks.track
+            : [trackData.tracks.track];
+
+          discoveryCache.globalTopTracks = tracks.map((t) => {
+            let img = null;
+            if (t.image && Array.isArray(t.image)) {
+              const i =
+                t.image.find((img) => img.size === "extralarge") ||
+                t.image.find((img) => img.size === "large");
+              if (
+                i &&
+                i["#text"] &&
+                !i["#text"].includes("2a96cbd8b46e442fc41c2b86b821562f")
+              )
+                img = i["#text"];
+            }
+            return {
+              name: t.name,
+              artist: t.artist?.name,
+              artistMbid: t.artist?.mbid,
+              image: img,
+              playcount: t.playcount,
+              type: "Track",
+            };
+          });
+        }
       } catch (e) {
         console.error(`Failed to fetch Global Top: ${e.message}`);
       }
     }
 
-    const recSampleSize = Math.min(25, lidarrArtists.length);
-    const recSample = [...lidarrArtists]
+    const recSampleSize = Math.min(25, seedArtists.length);
+    const recSample = [...seedArtists]
       .sort(() => 0.5 - Math.random())
       .slice(0, recSampleSize);
     const recommendations = new Map();
+
+    discoveryCache.basedOn = recSample.map(a => ({ id: a.foreignArtistId, name: a.artistName }));
 
     console.log(
       `Generating recommendations based on ${recSample.length} artists...`,
     );
 
-    if (LASTFM_API_KEY) {
+    if (LASTFM_API_KEY()) {
       await Promise.all(
         recSample.map(async (artist) => {
           try {
@@ -1712,6 +2229,7 @@ const updateDiscoveryCache = async () => {
       topTags: discoveryCache.topTags || [],
       topGenres: discoveryCache.topGenres || [],
       globalTop: discoveryCache.globalTop || [],
+      globalTopTracks: discoveryCache.globalTopTracks || [],
       lastUpdated: new Date().toISOString(),
     };
 
@@ -1746,7 +2264,21 @@ const updateDiscoveryCache = async () => {
   }
 };
 
-setInterval(updateDiscoveryCache, 24 * 60 * 60 * 1000);
+let discoveryInterval = null;
+
+const startDiscoverySchedule = () => {
+  if (discoveryInterval) clearInterval(discoveryInterval);
+  const hours = db.data.settings?.discoveryRefreshInterval || 24;
+  console.log(`Scheduling discovery refresh every ${hours} hours.`);
+  discoveryInterval = setInterval(updateDiscoveryCache, hours * 60 * 60 * 1000);
+};
+
+const restartDiscoverySchedule = () => {
+  console.log("Restarting discovery schedule...");
+  startDiscoverySchedule();
+};
+
+startDiscoverySchedule();
 
 setTimeout(() => {
   const lastUpdated = db.data.discovery?.lastUpdated;
@@ -1779,6 +2311,7 @@ app.post("/api/discover/clear", async (req, res) => {
     discovery: {
       recommendations: [],
       globalTop: [],
+      globalTopTracks: [],
       basedOn: [],
       topTags: [],
       topGenres: [],
@@ -1799,12 +2332,190 @@ app.get("/api/discover", (req, res) => {
   res.json({
     recommendations: discoveryCache.recommendations,
     globalTop: discoveryCache.globalTop,
+    globalTopTracks: discoveryCache.globalTopTracks,
     basedOn: discoveryCache.basedOn,
     topTags: discoveryCache.topTags,
     topGenres: discoveryCache.topGenres,
     lastUpdated: discoveryCache.lastUpdated,
     isUpdating: discoveryCache.isUpdating,
   });
+});
+
+app.get("/api/discover/personal", async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    const { limit = 20 } = req.query;
+    const userId = req.user.id;
+    const userApiKey = req.user.lastfmApiKey;
+
+    const lidarrArtists = await getCachedLidarrArtists(true);
+    const existingArtistIds = new Set(
+      lidarrArtists.map((a) => a.foreignArtistId),
+    );
+
+    const userRequests = (db.data.requests || []).filter(r => r.requestedByUserId === userId);
+    const userLikes = (db.data.likes || []).filter(l => l.userId === userId);
+
+    const seedMbids = new Set([
+      ...userRequests.map(r => r.mbid),
+      ...userLikes.map(l => l.mbid)
+    ]);
+
+    const seedArtists = lidarrArtists.filter(a => seedMbids.has(a.foreignArtistId));
+
+    if (seedArtists.length === 0) {
+      return res.json({ recommendations: [], basedOn: [], message: "No likes or requests to base recommendations on" });
+    }
+
+    const recSampleSize = Math.min(10, seedArtists.length); // Smaller sample for on-the-fly request
+    const recSample = [...seedArtists]
+      .sort(() => 0.5 - Math.random())
+      .slice(0, recSampleSize);
+
+    const recommendations = new Map();
+    const tagCounts = new Map();
+    const genreCounts = new Map();
+
+    await Promise.all(
+      recSample.map(async (artist) => {
+        try {
+          let foundTags = false;
+          // Use Last.fm if possible
+          if (LASTFM_API_KEY()) {
+            const tagData = await lastfmRequest("artist.getTopTags", {
+              mbid: artist.foreignArtistId,
+            }, userApiKey);
+
+            if (tagData?.toptags?.tag) {
+              const tags = Array.isArray(tagData.toptags.tag)
+                ? tagData.toptags.tag
+                : [tagData.toptags.tag];
+
+              const currentArtistTags = tags.slice(0, 15).map(t => t.name);
+
+              tags.slice(0, 15).forEach((t) => {
+                const count = parseInt(t.count) || 1;
+                tagCounts.set(t.name, (tagCounts.get(t.name) || 0) + count);
+                const l = t.name.toLowerCase();
+                if (GENRE_KEYWORDS.some((g) => l.includes(g))) {
+                  genreCounts.set(t.name, (genreCounts.get(t.name) || 0) + 1);
+                }
+              });
+              foundTags = true;
+
+              const similar = await lastfmRequest("artist.getSimilar", {
+                mbid: artist.foreignArtistId,
+                limit: 15,
+              }, userApiKey);
+
+              if (similar?.similarartists?.artist) {
+                const list = Array.isArray(similar.similarartists.artist)
+                  ? similar.similarartists.artist
+                  : [similar.similarartists.artist];
+
+                for (const s of list) {
+                  if (s.mbid && !existingArtistIds.has(s.mbid) && !recommendations.has(s.mbid)) {
+                    let img = null;
+                    if (s.image && Array.isArray(s.image)) {
+                      const i = s.image.find(img => img.size === 'extralarge') || s.image.find(img => img.size === 'large');
+                      if (i && i['#text'] && !i['#text'].includes('2a96cbd8b46e442fc41c2b86b821562f')) {
+                        img = i['#text'];
+                      }
+                    }
+                    recommendations.set(s.mbid, {
+                      id: s.mbid,
+                      name: s.name,
+                      type: 'Artist',
+                      sourceArtist: artist.artistName,
+                      tags: currentArtistTags,
+                      score: Math.round((s.match || 0) * 100),
+                      image: img
+                    });
+                  }
+                }
+              }
+            }
+          }
+
+          if (!foundTags) {
+            // Fallback to MB
+            const tags = await musicbrainzRequest(`/artist/${artist.foreignArtistId}`, { inc: 'tags+genres' });
+
+            (tags.tags || []).forEach((t) => {
+              tagCounts.set(t.name, (tagCounts.get(t.name) || 0) + (t.count || 1));
+              const l = t.name.toLowerCase();
+              if (GENRE_KEYWORDS.some((g) => l.includes(g))) {
+                genreCounts.set(t.name, (genreCounts.get(t.name) || 0) + 1);
+              }
+            });
+
+            (tags.genres || []).forEach((g) => {
+              genreCounts.set(g.name, (genreCounts.get(g.name) || 0) + (g.count || 1));
+            });
+
+            const topTags = (tags.tags || []).sort((a, b) => b.count - a.count).slice(0, 3).map(t => t.name);
+            if (topTags.length > 0) {
+              const search = await musicbrainzRequest('/artist', {
+                query: `${topTags.map(t => `tag:"${t}"`).join(' AND ')} AND type:Group`,
+                limit: 10
+              });
+              (search.artists || []).forEach(f => {
+                if (f.id !== artist.foreignArtistId && !existingArtistIds.has(f.id) && !recommendations.has(f.id)) {
+                  recommendations.set(f.id, {
+                    id: f.id,
+                    name: f.name,
+                    type: f.type,
+                    sourceArtist: artist.artistName,
+                    tags: topTags,
+                    score: f.score || 80
+                  });
+                }
+              });
+            }
+          }
+        } catch (e) {
+          console.warn(`Error in personal recs for ${artist.artistName}:`, e.message);
+        }
+      })
+    );
+
+    const topTags = Array.from(tagCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map((t) => t[0]);
+
+    const topGenres = Array.from(genreCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map((t) => t[0]);
+
+    const recommendationsArray = Array.from(recommendations.values())
+      .sort((a, b) => b.score - a.score)
+      .slice(0, parseInt(limit));
+
+    // Hydrate images for MB results if needed
+    await Promise.all(
+      recommendationsArray.filter(a => !a.image).map(async (item) => {
+        try {
+          const img = await getArtistImage(item.id, userApiKey);
+          if (img.url) item.image = img.url;
+        } catch (e) { }
+      })
+    );
+
+    res.json({
+      recommendations: recommendationsArray,
+      basedOn: recSample.map(a => ({ id: a.foreignArtistId, name: a.artistName })),
+      topTags,
+      topGenres
+    });
+
+  } catch (error) {
+    res.status(500).json({ error: "Failed to get personal recommendations", message: error.message });
+  }
 });
 
 app.get("/api/discover/related", (req, res) => {
@@ -1839,7 +2550,7 @@ app.get("/api/discover/by-tag", async (req, res) => {
         const data = await lastfmRequest("tag.getTopArtists", {
           tag,
           limit: Math.min(parseInt(limit) * 2, 50),
-        });
+        }, req.user?.lastfmApiKey);
 
         if (data?.topartists?.artist) {
           const artists = Array.isArray(data.topartists.artist)

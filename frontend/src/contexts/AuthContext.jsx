@@ -1,84 +1,121 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { checkHealth, verifyCredentials } from '../utils/api';
+import api from '../utils/api';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authRequired, setAuthRequired] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [needsSetup, setNeedsSetup] = useState(false);
+
+  // Helper to decode JWT without a library
+  const parseJwt = (token) => {
+    try {
+      return JSON.parse(atob(token.split('.')[1]));
+    } catch (e) {
+      return null;
+    }
+  };
 
   const checkAuthStatus = async () => {
+    const token = localStorage.getItem('auth_token');
+
+    // Check if setup is needed
     try {
-      const healthData = await checkHealth();
-      const isRequired = healthData.authRequired;
-      const authUser = healthData.authUser || 'admin';
-      setAuthRequired(isRequired);
-      
-      if (isRequired) {
-         localStorage.setItem('auth_user', authUser);
+      const health = await api.get('/health');
+      if (health.data.needsSetup) {
+        setNeedsSetup(true);
       }
+    } catch (e) {
+      console.error("Health check failed in AuthContext", e);
+    }
 
-      if (!isRequired) {
+    if (token) {
+      const decoded = parseJwt(token);
+      if (decoded && decoded.exp * 1000 > Date.now()) {
+        setUser({
+          id: decoded.id,
+          username: decoded.username,
+          email: decoded.email,
+          lastfmApiKey: decoded.lastfmApiKey,
+          permissions: decoded.permissions
+        });
         setIsAuthenticated(true);
-        setIsLoading(false);
-        return;
-      }
-
-      const storedPassword = localStorage.getItem('auth_password');
-      const storedUser = localStorage.getItem('auth_user') || 'admin';
-
-      if (storedPassword) {
-        try {
-           const isValid = await verifyCredentials(storedPassword, storedUser);
-           setIsAuthenticated(isValid);
-           if (!isValid) {
-             localStorage.removeItem('auth_password');
-           }
-        } catch (e) {
-           console.error("Credential verification failed", e);
-        }
       } else {
+        localStorage.removeItem('auth_token');
+        setUser(null);
         setIsAuthenticated(false);
       }
-    } catch (error) {
-      console.error("Auth check failed:", error);
-    } finally {
-      setIsLoading(false);
     }
+
+    setIsLoading(false);
   };
 
   useEffect(() => {
     checkAuthStatus();
   }, []);
 
-  const login = async (password, username = 'admin') => {
-    if (!password) return false;
-    
+  const login = async (username, password) => {
     try {
-      const isValid = await verifyCredentials(password, username);
-      if (isValid) {
-        localStorage.setItem('auth_password', password);
-        localStorage.setItem('auth_user', username);
-        setIsAuthenticated(true);
-        window.location.reload(); 
-        return true;
-      }
-      return false;
-    } catch (e) {
-      console.error("Login failed:", e);
-      return false;
+      const response = await api.post('/auth/login', { username, password });
+      const { token, user } = response.data;
+
+      localStorage.setItem('auth_token', token);
+      setUser(user);
+      setIsAuthenticated(true);
+      return { success: true };
+    } catch (error) {
+      console.error("Login failed:", error);
+      return {
+        success: false,
+        error: error.response?.data?.error || "Login failed"
+      };
+    }
+  };
+
+  const initSetup = async (username, password) => {
+    try {
+      const response = await api.post('/auth/init', { username, password });
+      const { token, user } = response.data;
+
+      localStorage.setItem('auth_token', token);
+      setUser(user);
+      setIsAuthenticated(true);
+      setNeedsSetup(false);
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: error.response?.data?.error || "Setup failed"
+      };
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('auth_password');
-    localStorage.removeItem('auth_user');
+    localStorage.removeItem('auth_token');
+    setUser(null);
     setIsAuthenticated(false);
+    window.location.href = '/login';
+  };
+
+  const hasPermission = (permission) => {
+    if (!user) return false;
+    if (user.permissions.includes('admin')) return true;
+    return user.permissions.includes(permission);
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, isLoading, login, logout, authRequired }}>
+    <AuthContext.Provider value={{
+      user,
+      isAuthenticated,
+      isLoading,
+      login,
+      logout,
+      initSetup,
+      hasPermission,
+      needsSetup
+    }}>
       {children}
     </AuthContext.Provider>
   );

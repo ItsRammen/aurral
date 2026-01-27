@@ -16,6 +16,8 @@ import {
   RefreshCcw,
   Settings,
   Save,
+  Heart,
+  Clock,
 } from "lucide-react";
 import {
   getArtistDetails,
@@ -32,6 +34,8 @@ import {
   getLidarrQualityProfiles,
   getLidarrMetadataProfiles,
   updateLidarrArtist,
+  toggleLikeArtist,
+  getLikedArtists,
 } from "../utils/api";
 import { useToast } from "../contexts/ToastContext";
 import AddArtistModal from "../components/AddArtistModal";
@@ -49,6 +53,8 @@ function ArtistDetailsPage() {
   const [similarArtists, setSimilarArtists] = useState([]);
   const [existingSimilar, setExistingSimilar] = useState({});
   const [loading, setLoading] = useState(true);
+  const [isLiked, setIsLiked] = useState(false);
+  const [liking, setLiking] = useState(false);
   const [error, setError] = useState(null);
   const [existsInLidarr, setExistsInLidarr] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -65,6 +71,7 @@ function ArtistDetailsPage() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [selectedAlbumForDetails, setSelectedAlbumForDetails] = useState(null);
   const [health, setHealth] = useState(null);
+  const [pendingRequest, setPendingRequest] = useState(null);
   const { showSuccess, showError } = useToast();
 
   useEffect(() => {
@@ -73,16 +80,18 @@ function ArtistDetailsPage() {
       setError(null);
 
       try {
-        const [artistData, healthData, qProfiles, mProfiles] = await Promise.all([
+        const [artistData, healthData, qProfiles, mProfiles, likedMbids] = await Promise.all([
           getArtistDetails(mbid),
           checkHealth(),
           getLidarrQualityProfiles(),
-          getLidarrMetadataProfiles()
+          getLidarrMetadataProfiles(),
+          getLikedArtists()
         ]);
         setArtist(artistData);
         setHealth(healthData);
         setQualityProfiles(qProfiles);
         setMetadataProfiles(mProfiles);
+        setIsLiked(likedMbids.includes(mbid));
 
         try {
           const similarData = await getSimilarArtistsForArtist(mbid);
@@ -110,6 +119,9 @@ function ArtistDetailsPage() {
           if (lookup.exists && lookup.artist) {
             setLidarrArtist(lookup.artist);
             fetchLidarrData(lookup.artist.id);
+          }
+          if (lookup.pending && lookup.request) {
+            setPendingRequest(lookup.request);
           }
         } catch (err) {
           console.error("Failed to lookup artist in Lidarr:", err);
@@ -151,14 +163,21 @@ function ArtistDetailsPage() {
     setShowAddModal(true);
   };
 
-  const handleAddSuccess = async (addedArtist) => {
-    if (!artistToAdd) {
+  const handleAddSuccess = async (addedArtist, response) => {
+    if (response?.pending) {
+      setPendingRequest({
+        ...addedArtist,
+        requestedBy: "You", // Or fetch current user
+        status: "pending_approval"
+      });
+      showSuccess(`Request for ${addedArtist.name} submitted for admin approval.`);
+    } else {
       setExistsInLidarr(true);
+      showSuccess(`Successfully added ${addedArtist.name} to Lidarr!`);
     }
 
     setShowAddModal(false);
     setArtistToAdd(null);
-    showSuccess(`Successfully added ${addedArtist.name} to Lidarr!`);
 
     if (addedArtist.id) {
       setExistingSimilar((prev) => ({ ...prev, [addedArtist.id]: true }));
@@ -272,14 +291,46 @@ function ArtistDetailsPage() {
     showSuccess("Artist settings updated successfully");
   };
 
-  const handleRequestAlbum = async (albumId) => {
+  const handleRequestAlbum = async (albumIdOrMbid) => {
     try {
-      await updateLidarrAlbum(albumId, { monitored: true });
-      setLidarrAlbums(prev => prev.map(a => a.id === albumId ? { ...a, monitored: true } : a));
-      await runLidarrCommand("AlbumSearch", { albumIds: [albumId] });
-      showSuccess("Album request started (monitoring + search)");
+      // Find the lidarr album from our state using either internal ID or MBID
+      const lidarrAlbum = lidarrAlbums.find(
+        (a) => a.id === albumIdOrMbid || a.foreignAlbumId === albumIdOrMbid
+      );
+
+      if (!lidarrAlbum) {
+        throw new Error("Album not found in Lidarr. Try refreshing.");
+      }
+
+      // Lidarr requires the full object for PUT updates
+      await updateLidarrAlbum(lidarrAlbum.id, {
+        ...lidarrAlbum,
+        monitored: true
+      });
+
+      setLidarrAlbums(prev => prev.map(a => a.id === lidarrAlbum.id ? { ...a, monitored: true } : a));
+      if (selectedAlbumForDetails?.lidarrId === lidarrAlbum.id) {
+        setSelectedAlbumForDetails(prev => ({ ...prev, monitored: true }));
+      }
+      await runLidarrCommand("AlbumSearch", { albumIds: [lidarrAlbum.id] });
+      showSuccess(`Album "${lidarrAlbum.title}" request started (monitoring + search)`);
     } catch (err) {
-      showError("Failed to request album");
+      console.error("Failed to request album:", err);
+      showError(`Failed to request album: ${err.message}`);
+    }
+  };
+
+  const handleToggleLike = async () => {
+    if (!artist) return;
+    setLiking(true);
+    try {
+      const result = await toggleLikeArtist(mbid, artist.name, getCoverImage());
+      setIsLiked(result.liked);
+      showSuccess(result.liked ? `Added ${artist.name} to your liked artists` : `Removed ${artist.name} from your liked artists`);
+    } catch (err) {
+      showError("Failed to update like status");
+    } finally {
+      setLiking(false);
     }
   };
 
@@ -411,6 +462,25 @@ function ArtistDetailsPage() {
               {artist.name}
             </h1>
 
+            {artist.added && (
+              <div className="flex items-center text-sm text-gray-500 dark:text-gray-400 mb-1">
+                <Calendar className="w-4 h-4 mr-2" />
+                Added {new Date(artist.added).toLocaleDateString()}
+              </div>
+            )}
+
+            {(artist.requestedBy || pendingRequest?.requestedBy) && (
+              <div className="flex items-center text-primary-600 dark:text-primary-400 font-medium mb-4 text-sm">
+                <Clock className="w-4 h-4 mr-2" />
+                Requested by {artist.requestedBy || pendingRequest?.requestedBy}
+                {pendingRequest && (
+                  <span className="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                    Pending Approval
+                  </span>
+                )}
+              </div>
+            )}
+
             {artist["sort-name"] && artist["sort-name"] !== artist.name && (
               <p className="text-lg text-gray-600 dark:text-gray-400 mb-4">
                 {artist["sort-name"]}
@@ -463,6 +533,11 @@ function ArtistDetailsPage() {
                   <CheckCircle className="w-5 h-5 mr-2" />
                   In Your Library
                 </button>
+              ) : pendingRequest ? (
+                <button className="btn bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800/30 inline-flex items-center cursor-default">
+                  <Clock className="w-5 h-5 mr-2" />
+                  Pending Approval
+                </button>
               ) : (
                 <button
                   onClick={handleAddArtistClick}
@@ -472,6 +547,16 @@ function ArtistDetailsPage() {
                   Add to Lidarr
                 </button>
               )}
+
+              <button
+                onClick={handleToggleLike}
+                disabled={liking}
+                className={`btn inline-flex items-center ${isLiked ? 'bg-pink-50 text-pink-600 border-pink-200 hover:bg-pink-100 dark:bg-pink-900/20 dark:text-pink-400 dark:border-pink-800/30' : 'btn-secondary'}`}
+                title={isLiked ? "Unlike Artist" : "Like Artist"}
+              >
+                <Heart className={`w-5 h-5 mr-2 ${isLiked ? 'fill-current' : ''}`} />
+                {isLiked ? 'Liked' : 'Like'}
+              </button>
 
               <a
                 href={`https://musicbrainz.org/artist/${mbid}`}
@@ -525,24 +610,31 @@ function ArtistDetailsPage() {
               Tags & Genres
             </h2>
             <div className="flex flex-wrap gap-2">
-              {artist.genres &&
-                artist.genres.map((genre, idx) => (
+              {(() => {
+                const genres = (artist.genres || []).map(g => ({ ...g, type: 'genre' }));
+                const tags = (artist.tags || []).map(t => ({ ...t, type: 'tag' }));
+
+                // Merge and deduplicate by name (case-insensitive)
+                const seen = new Set();
+                const combined = [...genres, ...tags].filter(item => {
+                  const name = item.name.toLowerCase();
+                  if (seen.has(name)) return false;
+                  seen.add(name);
+                  return true;
+                });
+
+                return combined.map((item, idx) => (
                   <span
-                    key={`genre-${idx}`}
-                    className="badge badge-primary text-sm px-3 py-1"
+                    key={`${item.type}-${idx}`}
+                    className={`badge text-sm px-3 py-1 ${item.type === 'genre'
+                      ? "badge-primary"
+                      : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300"
+                      }`}
                   >
-                    {genre.name}
+                    {item.name}
                   </span>
-                ))}
-              {artist.tags &&
-                artist.tags.map((tag, idx) => (
-                  <span
-                    key={`tag-${idx}`}
-                    className="badge bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm px-3 py-1"
-                  >
-                    {tag.name}
-                  </span>
-                ))}
+                ));
+              })()}
             </div>
           </div>
         )}
@@ -671,12 +763,10 @@ function ArtistDetailsPage() {
                           </div>
                         ) : (
                           <button
-                            onClick={() =>
-                              handleRequestAlbum(
-                                releaseGroup.id,
-                                releaseGroup.title,
-                              )
-                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleRequestAlbum(releaseGroup.id);
+                            }}
                             disabled={requestingAlbum === releaseGroup.id}
                             className="btn btn-primary btn-sm"
                           >
