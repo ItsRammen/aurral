@@ -244,8 +244,12 @@ export default function UsersPage() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-4">
-                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                                                    {getInitials(user.username)}
+                                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary-400 to-primary-600 flex items-center justify-center text-white font-bold text-sm shadow-md overflow-hidden">
+                                                    {user.avatar ? (
+                                                        <img src={user.avatar} alt={user.username} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        getInitials(user.username)
+                                                    )}
                                                 </div>
                                                 <div className="flex flex-col min-w-0">
                                                     <span className="font-semibold text-gray-900 dark:text-white truncate">{user.username}</span>
@@ -257,9 +261,15 @@ export default function UsersPage() {
                                             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{user.requestCount || 0}</span>
                                         </td>
                                         <td className="px-6 py-4">
-                                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
-                                                Local User
-                                            </span>
+                                            {user.authType === 'oidc' ? (
+                                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                                                    SSO User
+                                                </span>
+                                            ) : (
+                                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                                                    Local User
+                                                </span>
+                                            )}
                                         </td>
                                         <td className="px-6 py-4 text-sm font-medium">
                                             <div className="flex gap-2">
@@ -275,7 +285,7 @@ export default function UsersPage() {
                                         </td>
                                         <td className="px-6 py-4">
                                             <span className="text-sm text-gray-500 dark:text-gray-400">
-                                                {new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                                                {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
@@ -286,13 +296,22 @@ export default function UsersPage() {
                                                 >
                                                     Edit
                                                 </button>
-                                                <button
-                                                    onClick={() => handleDelete(user.id)}
-                                                    className="btn border border-gray-200 dark:border-gray-700 hover:bg-red-500 hover:border-red-500 hover:text-white px-3 py-1.5 text-xs font-bold uppercase transition-all"
-                                                    disabled={user.permissions.includes('admin') && users.filter(u => u.permissions.includes('admin')).length <= 1}
-                                                >
-                                                    Delete
-                                                </button>
+                                                <div className="relative group/tooltip">
+                                                    <button
+                                                        onClick={() => handleDelete(user.id)}
+                                                        className={`btn border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs font-bold uppercase transition-all ${user.authType === 'oidc'
+                                                            ? 'opacity-50 cursor-not-allowed hover:bg-transparent hover:border-gray-200 dark:hover:border-gray-700'
+                                                            : 'hover:bg-red-500 hover:border-red-500 hover:text-white'}`}
+                                                        disabled={(user.permissions.includes('admin') && users.filter(u => u.permissions.includes('admin')).length <= 1) || user.authType === 'oidc'}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                    {user.authType === 'oidc' && (
+                                                        <div className="absolute bottom-full right-0 mb-2 w-max px-2 py-1 bg-gray-900 text-white text-[10px] rounded opacity-0 group-hover/tooltip:opacity-100 transition-opacity pointer-events-none">
+                                                            Managed by SSO
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </div>
                                         </td>
                                     </tr>
@@ -355,8 +374,12 @@ export default function UsersPage() {
                             {/* Modal Header */}
                             <div className="p-8 pb-4">
                                 <div className="flex items-center gap-4 mb-6">
-                                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-white font-bold text-2xl shadow-lg border-4 border-gray-900">
-                                        {getInitials(formData.username || 'U')}
+                                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary-500 to-primary-700 flex items-center justify-center text-white font-bold text-2xl shadow-lg border-4 border-gray-900 overflow-hidden">
+                                        {editingUser?.avatar ? (
+                                            <img src={editingUser.avatar} alt={formData.username} className="w-full h-full object-cover" />
+                                        ) : (
+                                            getInitials(formData.username || 'U')
+                                        )}
                                     </div>
                                     <div>
                                         <h3 className="text-2xl font-bold text-white flex items-center gap-2">
@@ -376,9 +399,9 @@ export default function UsersPage() {
                                 <div className="flex gap-8 border-b border-gray-800">
                                     {[
                                         { id: 'general', label: 'General', icon: User },
-                                        { id: 'password', label: 'Password', icon: Lock },
+                                        { id: 'password', label: 'Password', icon: Lock, hidden: editingUser?.authType === 'oidc' },
                                         { id: 'permissions', label: 'Permissions', icon: ShieldCheck },
-                                    ].map(tab => (
+                                    ].filter(tab => !tab.hidden).map(tab => (
                                         <button
                                             key={tab.id}
                                             onClick={() => setActiveModalTab(tab.id)}
@@ -403,6 +426,19 @@ export default function UsersPage() {
                                         <div className="space-y-6 animate-fade-in">
                                             <h4 className="text-xl font-bold text-white mb-6">General Settings</h4>
 
+                                            {editingUser?.authType === 'oidc' && (
+                                                <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-xl flex items-start gap-3">
+                                                    <Shield className="w-5 h-5 text-blue-400 mt-0.5 shrink-0" />
+                                                    <div>
+                                                        <h5 className="text-sm font-bold text-blue-400">Managed by SSO</h5>
+                                                        <p className="text-xs text-blue-300/80 mt-1">
+                                                            This user account is managed by an external identity provider.
+                                                            Email and password cannot be changed here.
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <div className="grid grid-cols-2 gap-6">
                                                 <div className="space-y-2">
                                                     <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Role</label>
@@ -413,9 +449,15 @@ export default function UsersPage() {
                                                 <div className="space-y-2">
                                                     <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Account Type</label>
                                                     <div className="flex">
-                                                        <span className="px-3 py-1 bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider">
-                                                            Aurral User
-                                                        </span>
+                                                        {editingUser?.authType === 'oidc' ? (
+                                                            <span className="px-3 py-1 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                                                                SSO User
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-3 py-1 bg-purple-500/10 text-purple-500 border border-purple-500/20 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                                                                Local User
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
@@ -425,10 +467,12 @@ export default function UsersPage() {
                                                 <input
                                                     type="text"
                                                     required
+                                                    disabled={editingUser?.authType === 'oidc'}
                                                     value={formData.username}
                                                     onChange={e => setFormData({ ...formData, username: e.target.value })}
-                                                    className="w-full bg-[#1f2937] border border-gray-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+                                                    className={`w-full bg-[#1f2937] border border-gray-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-primary-500 outline-none transition-all ${editingUser?.authType === 'oidc' ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                     placeholder="e.g. mjohnson"
+                                                    title={editingUser?.authType === 'oidc' ? "Managed by SSO provider" : ""}
                                                 />
                                             </div>
 
@@ -436,10 +480,12 @@ export default function UsersPage() {
                                                 <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Email Address</label>
                                                 <input
                                                     type="email"
+                                                    disabled={editingUser?.authType === 'oidc'}
                                                     value={formData.email}
                                                     onChange={e => setFormData({ ...formData, email: e.target.value })}
-                                                    className="w-full bg-[#1f2937] border border-gray-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+                                                    className={`w-full bg-[#1f2937] border border-gray-700 rounded-xl p-3 text-white focus:ring-2 focus:ring-primary-500 outline-none transition-all ${editingUser?.authType === 'oidc' ? 'opacity-50 cursor-not-allowed' : ''}`}
                                                     placeholder="user@example.com"
+                                                    title={editingUser?.authType === 'oidc' ? "Managed by SSO provider" : ""}
                                                 />
                                             </div>
                                         </div>
@@ -448,10 +494,10 @@ export default function UsersPage() {
                                     {activeModalTab === 'password' && (
                                         <div className="space-y-6 animate-fade-in">
                                             <h4 className="text-xl font-bold text-white mb-6">Security Settings</h4>
-
                                             <div className="space-y-2">
                                                 <label className="text-xs font-bold uppercase tracking-wider text-gray-400">
                                                     New Password {editingUser && '(Leave blank to keep current)'}
+
                                                 </label>
                                                 <div className="relative">
                                                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />

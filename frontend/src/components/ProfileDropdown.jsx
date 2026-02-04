@@ -46,8 +46,12 @@ function ProfileDropdown() {
                 className="flex items-center justify-between w-full p-2 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-750 transition-all shadow-sm group"
             >
                 <div className="flex items-center gap-3">
-                    <div className={`w-9 h-9 rounded-lg ${avatarColor} flex items-center justify-center text-white text-sm font-bold shadow-sm transition-transform group-hover:scale-105`}>
-                        {initials}
+                    <div className={`w-9 h-9 rounded-lg ${avatarColor} flex items-center justify-center text-white text-sm font-bold shadow-sm transition-transform group-hover:scale-105 overflow-hidden`}>
+                        {user.avatar ? (
+                            <img src={user.avatar} alt={user.username} className="w-full h-full object-cover" />
+                        ) : (
+                            initials
+                        )}
                     </div>
                     <div className="flex flex-col items-start min-w-0">
                         <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate w-full">

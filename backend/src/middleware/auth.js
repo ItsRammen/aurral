@@ -1,0 +1,65 @@
+import jwt from "jsonwebtoken";
+import { db } from "../config/db.js";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const getJwtSecret = () => process.env.JWT_SECRET || "your-secret-key-change-this";
+
+export const authMiddleware = async (req, res, next) => {
+    if (
+        req.path === "/api/health" ||
+        req.path === "/api/auth/login" ||
+        req.path === "/api/auth/init" ||
+        req.path === "/api/auth/config" ||
+        req.path.startsWith("/api/auth/oidc")
+    ) {
+        return next();
+    }
+
+    // Accept token from header or query param
+    let token = req.headers.authorization?.split(" ")[1];
+    if (!token && req.query.token) {
+        token = req.query.token;
+    }
+
+    if (!token) {
+        return res.status(401).json({ error: "No token provided" });
+    }
+
+    try {
+        const secret = getJwtSecret();
+        const decoded = jwt.verify(token, secret);
+
+        const user = await db.User.findByPk(decoded.id);
+        if (!user) {
+            return res.status(401).json({ error: "Invalid token" });
+        }
+
+        // Attach Full Sequelize Model
+        req.user = user;
+        next();
+    } catch (error) {
+        return res.status(401).json({ error: "Invalid token" });
+    }
+};
+
+export const requirePermission = (permission) => {
+    return (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({ error: "Unauthorized" });
+        }
+
+        if (req.user.permissions.includes("admin")) {
+            return next();
+        }
+
+        if (!req.user.permissions.includes(permission)) {
+            return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
+        }
+        next();
+    };
+};
+
+export const JWT_SECRET = getJwtSecret(); // Export for consistent usage if needed, but preferable to use function
+

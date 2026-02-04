@@ -20,7 +20,9 @@ import { checkHealth } from "./utils/api";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { PlayerProvider } from "./contexts/PlayerContext";
 import ReloadPrompt from "./components/ReloadPrompt";
+import MiniPlayer from "./components/MiniPlayer";
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, isLoading, needsSetup } = useAuth(); // needsSetup logic needs to be robust
@@ -89,7 +91,7 @@ function AppContent() {
     <Router>
       <Routes>
         <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
-        <Route path="/setup" element={(!needsSetup && isAuthenticated) ? <Navigate to="/" replace /> : <SetupPage />} />
+        <Route path="/setup" element={needsSetup ? <SetupPage /> : <Navigate to="/" replace />} />
 
         <Route path="/" element={
           <ProtectedRoute>
@@ -170,8 +172,11 @@ function App() {
     <ThemeProvider>
       <ToastProvider>
         <AuthProvider>
-          <AppContent />
-          <ReloadPrompt />
+          <PlayerProvider>
+            <AppContent />
+            <MiniPlayer />
+            <ReloadPrompt />
+          </PlayerProvider>
         </AuthProvider>
       </ToastProvider>
     </ThemeProvider>

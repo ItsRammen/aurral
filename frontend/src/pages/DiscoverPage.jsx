@@ -16,13 +16,11 @@ import {
   RefreshCw,
 } from "lucide-react";
 import {
-  getDiscovery,
-  getPersonalDiscovery,
-  lookupArtistsInLidarrBatch,
-  getRequests,
-  getRecentlyAdded,
-  getLikedArtists,
+  getDashboard,
   toggleLikeArtist,
+  api,
+  getNavidromeRecommendations,
+  getNavidromeStatus,
 } from "../utils/api";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -37,12 +35,19 @@ function DiscoverPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [existingArtists, setExistingArtists] = useState({});
+  const [likedArtists, setLikedArtists] = useState([]);
   const [likingArtist, setLikingArtist] = useState(null);
+  const [artistToAdd, setArtistToAdd] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState("personal");
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
+
+  // Navidrome State
+  const [navidromeConnected, setNavidromeConnected] = useState(false);
+  const [navidromeRecommendations, setNavidromeRecommendations] = useState([]);
+  const [loadingNavidrome, setLoadingNavidrome] = useState(false);
 
   const userRequests = useMemo(() => {
     return requests.filter(r => r.requestedByUserId === user?.id);
@@ -52,40 +57,33 @@ function DiscoverPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const [discoveryData, personalDiscoveryData, requestsData, recentlyAddedData, likedData] =
-          await Promise.all([
-            getDiscovery(),
-            getPersonalDiscovery(),
-            getRequests(),
-            getRecentlyAdded(),
-            getLikedArtists(),
-          ]);
+        const [dashboard, naviStatus] = await Promise.all([
+          getDashboard(),
+          getNavidromeStatus().catch(() => ({ connected: false }))
+        ]);
 
-        setData(discoveryData);
-        setPersonalData(personalDiscoveryData);
-        setRequests(requestsData);
-        setRecentlyAdded(recentlyAddedData);
-        setLikedArtists(likedData);
-        setLoading(false);
+        setData(dashboard.discovery);
+        setPersonalData(dashboard.personal);
+        setRequests(dashboard.requests);
+        setRecentlyAdded(dashboard.recentlyAdded);
+        setLikedArtists(dashboard.likedArtists);
+        setExistingArtists(dashboard.existingArtists);
 
-        const mbids = [
-          ...new Set([
-            ...(discoveryData.recommendations || []).map((a) => a.id),
-            ...(personalDiscoveryData.recommendations || []).map((a) => a.id),
-            ...(discoveryData.globalTop || []).map((a) => a.id),
-            ...requestsData.map((r) => r.mbid),
-            ...recentlyAddedData.map((a) => a.foreignArtistId),
-          ]),
-        ].filter(Boolean);
+        setNavidromeConnected(naviStatus.connected);
 
-        if (mbids.length > 0) {
+        if (naviStatus.connected && user?.navidromeUsername) {
+          setLoadingNavidrome(true);
           try {
-            const existingMap = await lookupArtistsInLidarrBatch(mbids);
-            setExistingArtists(existingMap);
-          } catch (err) {
-            console.error("Failed to batch lookup artists:", err);
+            const recs = await getNavidromeRecommendations();
+            setNavidromeRecommendations(recs);
+          } catch (error) {
+            console.error("Failed to load Navidrome recommendations", error);
+          } finally {
+            setLoadingNavidrome(false);
           }
         }
+
+        setLoading(false);
       } catch (err) {
         setError(
           err.response?.data?.message || "Failed to load discovery data",
@@ -95,7 +93,7 @@ function DiscoverPage() {
     };
 
     fetchData();
-  }, []);
+  }, [user]);
 
   const handleAddArtistClick = (artist) => {
     setArtistToAdd(artist);
@@ -107,8 +105,8 @@ function DiscoverPage() {
       [artist.id]: true,
     }));
     setArtistToAdd(null);
-    getRequests().then(setRequests).catch(console.error);
-    getLikedArtists().then(setLikedArtists).catch(console.error);
+    // Refresh requests/liked - simplified re-fetch
+    window.location.reload();
     showSuccess(`Successfully added ${artist.name} to Lidarr!`);
   };
 
@@ -122,6 +120,28 @@ function DiscoverPage() {
       showError("Failed to start refresh: " + (err.response?.data?.message || err.message));
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const handleToggleLike = async (e, artist) => {
+    e.stopPropagation();
+    // ... keep existing logic if any, but it was missing in replaced block context so I assume it uses `toggleLikeArtist`
+    // I'll re-implement standard toggle logic just in case since I'm replacing the whole function scope potentially
+    if (likingArtist === artist.id) return;
+    setLikingArtist(artist.id);
+    try {
+      const response = await toggleLikeArtist(artist.id, artist.name, artist.image);
+      if (response.liked) {
+        setLikedArtists(prev => [...prev, artist.id]);
+        showSuccess(`Added ${artist.name} to favorites`);
+      } else {
+        setLikedArtists(prev => prev.filter(id => id !== artist.id));
+        showSuccess(`Removed ${artist.name} from favorites`);
+      }
+    } catch (err) {
+      showError("Failed to update favorite");
+    } finally {
+      setLikingArtist(null);
     }
   };
 
@@ -242,7 +262,7 @@ function DiscoverPage() {
               <Heart className={`w-5 h-5 ${isLiked ? "fill-current" : ""}`} />
             </button>
 
-            {!existingArtists[artist.id] && (
+            {!existingArtists[artist.id] && !status && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -366,7 +386,7 @@ function DiscoverPage() {
                 Music Discovery
               </h1>
               <p className="text-gray-600 dark:text-gray-300 max-w-xl text-lg">
-                Curated recommendations updated daily based on your Lidarr library.
+                Curated recommendations updated daily based on your likes and requests.
               </p>
             </div>
 
@@ -383,27 +403,69 @@ function DiscoverPage() {
 
           <div className="space-y-4">
             <div>
-              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
-                Your Top Genres
+              <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4">
+                Suggested For You
               </h3>
-              <div className="flex flex-wrap gap-2 max-h-[5.5rem] overflow-hidden">
-                {topGenres.map((genre, i) => (
-                  <button
-                    key={i}
-                    onClick={() => navigate(`/search?q=${encodeURIComponent(genre)}&type=tag`)}
-                    className="px-4 py-2 rounded-full bg-white dark:bg-white/10 hover:bg-gray-50 dark:hover:bg-white/20 border border-gray-200 dark:border-white/10 transition-colors text-sm font-medium text-gray-700 dark:text-white shadow-sm dark:shadow-none"
-                  >
-                    {genre}
-                  </button>
-                ))}
+              <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide -mx-2 px-2">
+                {(personalData?.dailySuggestions || []).slice(0, 10).map((artist) => {
+                  const isLiked = likedArtists.includes(artist.id);
+                  return (
+                    <div
+                      key={artist.id}
+                      className="group flex-shrink-0 flex flex-col items-center cursor-pointer"
+                      onClick={() => navigate(`/artist/${artist.id}`)}
+                    >
+                      <div className="relative w-20 h-20 md:w-24 md:h-24 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 ring-2 ring-transparent group-hover:ring-primary-500 transition-all shadow-lg group-hover:shadow-xl group-hover:scale-105">
+                        <ArtistImage
+                          src={artist.image}
+                          mbid={artist.id}
+                          alt={artist.name}
+                          className="w-full h-full object-cover"
+                        />
+                        {/* Quick Add Overlay */}
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          {!existingArtists[artist.id] ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddArtistClick(artist);
+                              }}
+                              className="p-2 rounded-full bg-primary-500 text-white hover:bg-primary-600 transition-colors shadow-lg"
+                              title="Add to Library"
+                            >
+                              <Plus className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <CheckCircle className="w-6 h-6 text-green-400" />
+                          )}
+                        </div>
+                        {/* Like Indicator */}
+                        {isLiked && (
+                          <div className="absolute bottom-0 right-0 p-1 bg-red-500 rounded-full shadow-md">
+                            <Heart className="w-3 h-3 text-white fill-current" />
+                          </div>
+                        )}
+                      </div>
+                      <span className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300 text-center truncate w-20 md:w-24 group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                        {artist.name}
+                      </span>
+                    </div>
+                  );
+                })}
+                {(!personalData?.dailySuggestions || personalData.dailySuggestions.length === 0) && (
+                  <div className="flex items-center justify-center w-full py-4 text-gray-500 dark:text-gray-400">
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Like some artists to get personalized suggestions!
+                  </div>
+                )}
               </div>
             </div>
 
-            {basedOn.length > 0 && (
+            {(personalData?.basedOn?.length > 0) && (
               <div className="pt-2">
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Inspired by {basedOn.slice(0, 3).map((a) => a.name).join(", ")}{" "}
-                  {basedOn.length > 3 && `and ${basedOn.length - 3} others`}
+                  Inspired by {personalData.basedOn.slice(0, 3).map((a) => a.name).join(", ")}{" "}
+                  {personalData.basedOn.length > 3 && `and ${personalData.basedOn.length - 3} others`}
                 </p>
               </div>
             )}
@@ -413,16 +475,17 @@ function DiscoverPage() {
 
       {/* Tab Switcher */}
       <div className="flex items-center justify-center border-b border-gray-200 dark:border-gray-800">
-        <div className="flex gap-8">
+        <div className="flex gap-8 overflow-x-auto">
           {[
             { id: "personal", label: "For You", icon: Sparkles },
+            ...(navidromeConnected && user?.navidromeUsername ? [{ id: "navidrome", label: "Listening History", icon: History }] : []),
             { id: "server", label: "Aurral Wide", icon: PlayCircle },
-            { id: "charts", label: "Top Hits", icon: TrendingUp },
+            ...(globalTop?.length > 0 || globalTopTracks?.length > 0 ? [{ id: "charts", label: "Top Hits", icon: TrendingUp }] : []),
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-all ${activeTab === tab.id
+              className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-all whitespace-nowrap ${activeTab === tab.id
                 ? "border-primary-500 text-primary-600 dark:text-primary-400"
                 : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700"
                 }`}
@@ -526,6 +589,61 @@ function DiscoverPage() {
                   </div>
                 </section>
               ))}
+          </div>
+        )}
+
+        {navidromeConnected && activeTab === "navidrome" && (
+          <div className="space-y-12 animate-slide-up">
+            <section>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center">
+                    <History className="w-6 h-6 mr-3 text-accent" />
+                    Based on your Listening
+                  </h2>
+                  <p className="text-gray-500 text-sm mt-1">
+                    Recommendations generated from your recent plays and frequent jams on Navidrome.
+                  </p>
+                </div>
+                {!user?.navidromeUsername && (
+                  <div className="badge badge-warning">
+                    Link your Navidrome account in your Profile to see data here.
+                  </div>
+                )}
+              </div>
+
+              {loadingNavidrome ? (
+                <div className="flex justify-center py-20">
+                  <Loader className="w-8 h-8 animate-spin text-primary-500" />
+                </div>
+              ) : navidromeRecommendations.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                  {navidromeRecommendations.map((artist, i) => (
+                    <ArtistCard
+                      key={i}
+                      artist={{
+                        id: artist.mbid,
+                        name: artist.name,
+                        image: artist.image,
+                        type: "Artist",
+                        sourceArtist: artist.sourceArtist,
+                      }}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-20 bg-base-200/50 rounded-2xl">
+                  <Music className="w-16 h-16 mx-auto text-base-content/20 mb-4" />
+                  <h3 className="font-bold text-lg">No playback history found</h3>
+                  <p className="text-base-content/60 max-w-md mx-auto mt-2">
+                    We couldn't find enough listening history yet.
+                    {user?.permissions?.includes('admin')
+                      ? " Try playing some music on Navidrome or running the refresh job in Settings > Jobs."
+                      : " Try playing some music on Navidrome."}
+                  </p>
+                </div>
+              )}
+            </section>
           </div>
         )}
 
