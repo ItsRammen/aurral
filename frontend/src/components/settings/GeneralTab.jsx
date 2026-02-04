@@ -1,5 +1,4 @@
 import React from 'react';
-import packageJson from '../../../../package.json';
 
 export default function GeneralTab({ settings, handleUpdate }) {
     return (
