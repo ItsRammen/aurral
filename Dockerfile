@@ -10,7 +10,7 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-RUN apk add --no-cache su-exec
+RUN apk add --no-cache su-exec shadow
 
 # Copy backend dependencies
 COPY backend/package*.json ./

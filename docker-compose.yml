@@ -9,12 +9,15 @@ services:
       - "3000:3001"
     environment:
       - PORT=3001
+      - PUID=1000 # Change this to your user ID (id -u)
+      - PGID=1000 # Change this to your group ID (id -g)
       - LIDARR_URL=${LIDARR_URL:-http://lidarr:8686}
       - LIDARR_API_KEY=${LIDARR_API_KEY}
       - LASTFM_API_KEY=${LASTFM_API_KEY}
       - CONTACT_EMAIL=${CONTACT_EMAIL:-user@example.com}
       - DEBUG=${DEBUG:-false}
       - AUTH_PASSWORD=${AUTH_PASSWORD}
+      - NODE_ENV=production
     volumes:
       - ./backend/data:/app/data
     security_opt:
@@ -25,6 +28,7 @@ services:
       - SETUID
       - SETGID
       - CHOWN
+      - DAC_OVERRIDE # Often needed for permission fixes
     networks:
       - aurral-network
 
