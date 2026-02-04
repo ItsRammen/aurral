@@ -22,12 +22,22 @@ router.get("/", requirePermission("manage_users"), async (req, res) => {
             attributes: { exclude: ['password'] }
         });
 
-        // Get request counts for each user
-        // We can do this with a group by query or just iterate if n is small
-        // For strict correctness with Sequelize:
-        const usersWithCounts = await Promise.all(users.map(async (u) => {
-            const requestCount = await db.Request.count({ where: { requestedByUserId: u.id } });
-            return { ...u.toJSON(), requestCount };
+        // Optimize N+1 query: Fetch all request counts in one go
+        const requestCounts = await db.Request.findAll({
+            attributes: ['requestedByUserId', [db.sequelize.fn('COUNT', db.sequelize.col('uniqueId')), 'count']],
+            group: ['requestedByUserId'],
+            raw: true
+        });
+
+        // Create a map for O(1) lookup
+        const countMap = requestCounts.reduce((acc, curr) => {
+            acc[curr.requestedByUserId] = curr.count;
+            return acc;
+        }, {});
+
+        const usersWithCounts = users.map(u => ({
+            ...u.toJSON(),
+            requestCount: countMap[u.id] || 0
         }));
 
         res.json(usersWithCounts);
