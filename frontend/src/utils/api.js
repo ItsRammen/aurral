@@ -28,9 +28,11 @@ api.interceptors.response.use(
     return response;
   },
   (error) => {
-    const message =
-      error.response?.data?.message || error.message || "An error occurred";
-    console.error("API Error:", message);
+    // Suppress console error for 401s (auth errors) to keep console clean
+    if (error.response?.status !== 401) {
+      const message = error.response?.data?.message || error.message || "An error occurred";
+      console.error("API Error:", message);
+    }
     return Promise.reject(error);
   },
 );
@@ -48,6 +50,13 @@ export const getAuthConfig = async () => {
 export const searchArtists = async (query, limit = 20, offset = 0) => {
   const response = await api.get("/search/artists", {
     params: { query, limit, offset },
+  });
+  return response.data;
+};
+
+export const searchRecordings = async (query, limit = 10) => {
+  const response = await api.get("/search/recordings", {
+    params: { query, limit },
   });
   return response.data;
 };
@@ -207,6 +216,26 @@ export const getPersonalDiscovery = async (limit = 20) => {
   return response.data;
 };
 
+const activeRequests = new Map();
+
+export const getDashboard = async () => {
+  if (activeRequests.has("dashboard")) {
+    return activeRequests.get("dashboard");
+  }
+
+  const promise = (async () => {
+    try {
+      const response = await api.get("/dashboard");
+      return response.data;
+    } finally {
+      activeRequests.delete("dashboard");
+    }
+  })();
+
+  activeRequests.set("dashboard", promise);
+  return promise;
+};
+
 export const getRelatedArtists = async (limit = 20) => {
   const response = await api.get("/discover/related", {
     params: { limit },
@@ -250,10 +279,73 @@ export const getAppSettings = async () => {
   return response.data;
 };
 
+export const saveNavidromeConfig = async (config) => {
+  const response = await api.post("/navidrome/config", config);
+  return response.data;
+};
+
+export const getNavidromeStatus = async () => {
+  const response = await api.get("/navidrome/status");
+  return response.data;
+};
+
+export const deleteNavidromeConfig = async () => {
+  const response = await api.delete("/navidrome/config");
+  return response.data;
+};
+
+export const getNavidromePlaybackUrl = async (artist, track) => {
+  const response = await api.get("/navidrome/search-play", {
+    params: { artist, track },
+  });
+  return response.data;
+};
+
+export const getNavidromeTrackInfo = async (trackId) => {
+  const response = await api.get(`/navidrome/track/${trackId}`);
+  return response.data;
+};
+
+export const verifyNavidromeUser = async (username, password) => {
+  const response = await api.post("/navidrome/verify-user", { username, password });
+  return response.data;
+};
+
+export const unlinkNavidromeUser = async () => {
+  const response = await api.delete("/navidrome/user-link");
+  return response.data;
+};
+
+export const getNavidromeUserHistory = async () => {
+  const response = await api.get("/navidrome/user-history");
+  return response.data;
+};
+
 export const updateAppSettings = async (settings) => {
   const response = await api.post("/settings", settings);
   return response.data;
 };
 
+export const runNavidromeJob = async () => {
+  const response = await api.post("/jobs/refresh-navidrome");
+  return response.data;
+};
+
+export const getJobStatus = async () => {
+  const response = await api.get("/jobs/status");
+  return response.data;
+};
+
+export const getNavidromeRecommendations = async () => {
+  const response = await api.get("/recommendations/navidrome");
+  return response.data;
+};
+
+export const testLidarrConnection = async (config) => {
+  const response = await api.post("/settings/test-lidarr", config);
+  return response.data;
+};
+
+export { api };
 export default api;
 

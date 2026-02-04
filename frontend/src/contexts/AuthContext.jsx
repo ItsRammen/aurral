@@ -32,17 +32,12 @@ export const AuthProvider = ({ children }) => {
     }
 
     if (token) {
-      const decoded = parseJwt(token);
-      if (decoded && decoded.exp * 1000 > Date.now()) {
-        setUser({
-          id: decoded.id,
-          username: decoded.username,
-          email: decoded.email,
-          lastfmApiKey: decoded.lastfmApiKey,
-          permissions: decoded.permissions
-        });
+      try {
+        const response = await api.get('/auth/me');
+        setUser(response.data);
         setIsAuthenticated(true);
-      } else {
+      } catch (e) {
+        console.error("Auth verify failed:", e);
         localStorage.removeItem('auth_token');
         setUser(null);
         setIsAuthenticated(false);
@@ -66,7 +61,7 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(true);
       return { success: true };
     } catch (error) {
-      console.error("Login failed:", error);
+      // console.error("Login failed:", error); 
       return {
         success: false,
         error: error.response?.data?.error || "Login failed"
@@ -108,6 +103,7 @@ export const AuthProvider = ({ children }) => {
   return (
     <AuthContext.Provider value={{
       user,
+      setUser,
       isAuthenticated,
       isLoading,
       login,

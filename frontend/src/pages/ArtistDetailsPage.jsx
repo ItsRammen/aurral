@@ -18,6 +18,9 @@ import {
   Save,
   Heart,
   Clock,
+  Search,
+  Play,
+  RefreshCw,
 } from "lucide-react";
 import {
   getArtistDetails,
@@ -36,8 +39,12 @@ import {
   updateLidarrArtist,
   toggleLikeArtist,
   getLikedArtists,
+  getNavidromeStatus,
+  getNavidromePlaybackUrl,
 } from "../utils/api";
+import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
+import { usePlayer } from "../contexts/PlayerContext";
 import AddArtistModal from "../components/AddArtistModal";
 import ArtistSettingsModal from "../components/ArtistSettingsModal";
 import AlbumTracksModal from "../components/AlbumTracksModal";
@@ -72,7 +79,14 @@ function ArtistDetailsPage() {
   const [selectedAlbumForDetails, setSelectedAlbumForDetails] = useState(null);
   const [health, setHealth] = useState(null);
   const [pendingRequest, setPendingRequest] = useState(null);
+  const [releaseSearch, setReleaseSearch] = useState("");
+  const [releaseSort, setReleaseSort] = useState("year-desc");
+  const [activeReleaseTab, setActiveReleaseTab] = useState("all");
+  const [navidromeConnected, setNavidromeConnected] = useState(false);
+  const [playingOnNavidrome, setPlayingOnNavidrome] = useState(null);
   const { showSuccess, showError } = useToast();
+  const { play } = usePlayer();
+  const { user } = useAuth();
 
   useEffect(() => {
     const fetchArtistData = async () => {
@@ -120,7 +134,7 @@ function ArtistDetailsPage() {
             setLidarrArtist(lookup.artist);
             fetchLidarrData(lookup.artist.id);
           }
-          if (lookup.pending && lookup.request) {
+          if (lookup.request) {
             setPendingRequest(lookup.request);
           }
         } catch (err) {
@@ -138,6 +152,18 @@ function ArtistDetailsPage() {
 
     fetchArtistData();
   }, [mbid]);
+
+  useEffect(() => {
+    const checkNavi = async () => {
+      try {
+        const status = await getNavidromeStatus();
+        setNavidromeConnected(status.connected);
+      } catch (e) {
+        console.error("Navidrome status check failed:", e);
+      }
+    };
+    checkNavi();
+  }, []);
 
   const fetchLidarrData = async (artistId) => {
     if (!artistId) return;
@@ -292,6 +318,7 @@ function ArtistDetailsPage() {
   };
 
   const handleRequestAlbum = async (albumIdOrMbid) => {
+    setRequestingAlbum(albumIdOrMbid);
     try {
       // Find the lidarr album from our state using either internal ID or MBID
       const lidarrAlbum = lidarrAlbums.find(
@@ -317,6 +344,8 @@ function ArtistDetailsPage() {
     } catch (err) {
       console.error("Failed to request album:", err);
       showError(`Failed to request album: ${err.message}`);
+    } finally {
+      setRequestingAlbum(null);
     }
   };
 
@@ -331,6 +360,38 @@ function ArtistDetailsPage() {
       showError("Failed to update like status");
     } finally {
       setLiking(false);
+    }
+  };
+
+  const handlePlayOnNavidrome = async (e, release) => {
+    e.stopPropagation();
+    if (!navidromeConnected || !artist) return;
+
+    setPlayingOnNavidrome(release.id);
+    try {
+      // Search for the album/track on Navidrome
+      const result = await getNavidromePlaybackUrl(artist.name, release.title);
+
+      // Extract track ID from the playback URL (format: #!/song/{id})
+      const trackIdMatch = result.playbackUrl.match(/#!\/song\/(.+)$/);
+      if (!trackIdMatch) {
+        throw new Error("Could not extract track ID");
+      }
+
+      const trackId = trackIdMatch[1];
+
+      // Play using the in-app player
+      play({
+        id: trackId,
+        title: result.match?.title || release.title,
+        artist: result.match?.artist || artist.name,
+        album: result.match?.album || release.title,
+        coverArt: `/api/navidrome/cover/${trackId}`
+      });
+    } catch (err) {
+      showError(err.response?.data?.error || "Release not found on your Navidrome server.");
+    } finally {
+      setPlayingOnNavidrome(null);
     }
   };
 
@@ -349,14 +410,37 @@ function ArtistDetailsPage() {
       return null;
     }
 
+    const stats = album.statistics || {};
+    const trackCount = stats.trackCount || 0;
+    const trackFileCount = stats.trackFileCount || 0;
+    const percentOfTracks = stats.percentOfTracks || 0;
+
     if (album.monitored) {
-      if (album.statistics?.percentOfTracks === 100) {
-        return { status: "available", label: "Available" };
+      if (percentOfTracks === 100) {
+        return {
+          status: "available",
+          label: "Available",
+          trackCount,
+          trackFileCount,
+          percentOfTracks
+        };
       }
-      return { status: "monitored", label: "Monitored" };
+      return {
+        status: "monitored",
+        label: "Monitored",
+        trackCount,
+        trackFileCount,
+        percentOfTracks
+      };
     }
 
-    return { status: "unmonitored", label: "Not Monitored" };
+    return {
+      status: "unmonitored",
+      label: "Not Monitored",
+      trackCount,
+      trackFileCount,
+      percentOfTracks
+    };
   };
 
   const handleModalClose = () => {
@@ -473,7 +557,7 @@ function ArtistDetailsPage() {
               <div className="flex items-center text-primary-600 dark:text-primary-400 font-medium mb-4 text-sm">
                 <Clock className="w-4 h-4 mr-2" />
                 Requested by {artist.requestedBy || pendingRequest?.requestedBy}
-                {pendingRequest && (
+                {pendingRequest && pendingRequest.status === 'pending_approval' && (
                   <span className="ml-2 px-2 py-0.5 bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 rounded-full text-[10px] font-bold uppercase tracking-wider">
                     Pending Approval
                   </span>
@@ -534,9 +618,18 @@ function ArtistDetailsPage() {
                   In Your Library
                 </button>
               ) : pendingRequest ? (
-                <button className="btn bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800/30 inline-flex items-center cursor-default">
-                  <Clock className="w-5 h-5 mr-2" />
-                  Pending Approval
+                <button className={`btn inline-flex items-center cursor-default ${pendingRequest.status === 'pending_approval'
+                  ? "bg-yellow-100 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800/30"
+                  : "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800/30"
+                  }`}>
+                  {pendingRequest.status === 'pending_approval' ? (
+                    <Clock className="w-5 h-5 mr-2" />
+                  ) : (
+                    <Loader className="w-5 h-5 mr-2 animate-spin" />
+                  )}
+                  {pendingRequest.status === 'pending_approval'
+                    ? "Pending Approval"
+                    : "Processing..."}
                 </button>
               ) : (
                 <button
@@ -568,10 +661,10 @@ function ArtistDetailsPage() {
                 View on MusicBrainz
               </a>
 
-              {existsInLidarr && health?.lidarrUrl && (
+              {existsInLidarr && user?.lidarrUrl && (
                 <>
                   <a
-                    href={`${health.lidarrUrl}/artist/${mbid}`}
+                    href={`${user.lidarrUrl}/artist/${mbid}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="btn btn-secondary inline-flex items-center"
@@ -639,183 +732,323 @@ function ArtistDetailsPage() {
           </div>
         )}
 
-      {artist["release-groups"] && artist["release-groups"].length > 0 && (
-        <div className="card">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center">
-              Albums & Releases ({artist["release-groups"].length})
-            </h2>
-            {existsInLidarr && lidarrAlbums.length > 0 && (
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleBatchMonitor(true)}
-                  disabled={batchMonitoring}
-                  className="btn btn-secondary btn-sm text-xs"
-                >
-                  {batchMonitoring ? <Loader className="w-3 h-3 animate-spin mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
-                  Monitor All
-                </button>
-                <button
-                  onClick={() => handleBatchMonitor(false)}
-                  disabled={batchMonitoring}
-                  className="btn btn-secondary btn-sm text-xs text-red-500 hover:text-red-600"
-                >
-                  {batchMonitoring ? <Loader className="w-3 h-3 animate-spin mr-1" /> : <XCircle className="w-3 h-3 mr-1" />}
-                  Unmonitor All
-                </button>
-              </div>
-            )}
-          </div>
-          <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2">
-            {artist["release-groups"]
-              .sort((a, b) => {
-                const dateA = a["first-release-date"] || "";
-                const dateB = b["first-release-date"] || "";
-                return dateB.localeCompare(dateA);
-              })
-              .map((releaseGroup) => {
-                const status = getAlbumStatus(releaseGroup.id);
-                const lidarrAlbum = existsInLidarr ? lidarrAlbums.find(a => {
-                  const fid = String(a.foreignAlbumId).toLowerCase();
-                  const rid = String(releaseGroup.id).toLowerCase();
-                  return fid === rid || fid.includes(rid) || rid.includes(fid);
-                }) : null;
+      {/* Release Logic and Tabs */}
+      {(() => {
+        if (!artist["release-groups"] || artist["release-groups"].length === 0) return null;
 
-                return (
-                  <div
-                    key={releaseGroup.id}
-                    onClick={() => {
-                      if (lidarrAlbum) {
-                        setSelectedAlbumForDetails({
-                          ...releaseGroup,
-                          lidarrId: lidarrAlbum.id,
-                          artistId: lidarrArtist?.id,
-                          monitored: lidarrAlbum.monitored,
-                          year: releaseGroup["first-release-date"]?.split("-")[0]
-                        });
-                      }
-                    }}
-                    className={`flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${lidarrAlbum ? "cursor-pointer" : ""}`}
-                  >
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-gray-900 dark:text-gray-100">
-                        {releaseGroup.title}
-                      </h3>
-                      <div className="flex items-center gap-3 mt-1 text-sm text-gray-600 dark:text-gray-400">
-                        {releaseGroup["first-release-date"] && (
-                          <span>
-                            {releaseGroup["first-release-date"].split("-")[0]}
-                          </span>
-                        )}
-                        {releaseGroup["primary-type"] && (
-                          <span className="badge badge-primary text-xs">
-                            {releaseGroup["primary-type"]}
-                          </span>
-                        )}
-                        {releaseGroup["secondary-types"] &&
-                          releaseGroup["secondary-types"].length > 0 && (
-                            <span className="badge bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs">
-                              {releaseGroup["secondary-types"].join(", ")}
-                            </span>
-                          )}
-                      </div>
-                    </div>
+        const allReleases = artist["release-groups"] || [];
 
-                    <div className="flex items-center gap-2">
-                      {status ? (
-                        status.status === "available" ? (
-                          <div className="flex items-center gap-2">
-                            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default">
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              Available
-                            </span>
-                            <button
-                              onClick={() => handleUnmonitorAlbum(releaseGroup.id, releaseGroup.title)}
-                              disabled={unmonitoringAlbum === releaseGroup.id}
-                              className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
-                              title="Stop Monitoring"
-                            >
-                              {unmonitoringAlbum === releaseGroup.id ? (
-                                <Loader className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <XCircle className="w-4 h-4" />
-                              )}
-                            </button>
-                          </div>
-                        ) : status.status === "monitored" ? (
-                          <div className="flex items-center gap-2">
-                            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 cursor-default">
-                              <CheckCircle className="w-3.5 h-3.5" />
-                              Monitored
-                            </span>
-                            <button
-                              onClick={() => handleUnmonitorAlbum(releaseGroup.id, releaseGroup.title)}
-                              disabled={unmonitoringAlbum === releaseGroup.id}
-                              className="p-1.5 text-gray-400 hover:text-red-500 transition-colors"
-                              title="Stop Monitoring"
-                            >
-                              {unmonitoringAlbum === releaseGroup.id ? (
-                                <Loader className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <XCircle className="w-4 h-4" />
-                              )}
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleRequestAlbum(releaseGroup.id);
-                            }}
-                            disabled={requestingAlbum === releaseGroup.id}
-                            className="btn btn-primary btn-sm"
-                          >
-                            {requestingAlbum === releaseGroup.id ? (
-                              <Loader className="w-4 h-4 animate-spin" />
-                            ) : (
-                              "Request"
-                            )}
-                          </button>
-                        )
-                      ) : existsInLidarr ? (
-                        <span className="text-xs text-gray-400 italic">
-                          Not in Lidarr
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400 italic">
-                          Add Artist First
-                        </span>
-                      )}
+        // Helper to get primary type (simplified)
+        const getDisplayType = (rg) => {
+          const type = rg["primary-type"];
+          if (!type) return "Other";
+          if (type === "Album") return "Album";
+          if (type === "Single" || type === "EP") return "Single / EP";
+          if (type === "Broadcast") return "Broadcast";
+          return "Other";
+        };
 
-                      <div className="flex items-center gap-1 ml-2">
-                        <a
-                          href={`https://musicbrainz.org/release-group/${releaseGroup.id}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="btn btn-secondary btn-sm p-1.5"
-                          title="View on MusicBrainz"
-                        >
-                          <Music className="w-4 h-4" />
-                        </a>
-                        {health?.lidarrUrl && existsInLidarr && (
-                          <a
-                            href={`${health.lidarrUrl}/album/${releaseGroup.id}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="btn btn-secondary btn-sm p-1.5"
-                            title="View in Lidarr"
-                          >
-                            <LayoutIcon className="w-4 h-4" />
-                          </a>
-                        )}
-                      </div>
+        const filtered = allReleases
+          .filter(rg => {
+            const matchesSearch = rg.title.toLowerCase().includes(releaseSearch.toLowerCase());
+            const displayType = getDisplayType(rg);
+            const matchesTab = activeReleaseTab === "all" ||
+              (activeReleaseTab === "albums" && displayType === "Album") ||
+              (activeReleaseTab === "singles" && displayType === "Single / EP") ||
+              (activeReleaseTab === "broadcast" && displayType === "Broadcast") ||
+              (activeReleaseTab === "other" && displayType === "Other");
+            return matchesSearch && matchesTab;
+          })
+          .sort((a, b) => {
+            if (releaseSort === "year-desc") {
+              const dateA = a["first-release-date"] || "0000";
+              const dateB = b["first-release-date"] || "0000";
+              return dateB.localeCompare(dateA);
+            }
+            if (releaseSort === "year-asc") {
+              const dateA = a["first-release-date"] || "9999";
+              const dateB = b["first-release-date"] || "9999";
+              return dateA.localeCompare(dateB);
+            }
+            if (releaseSort === "title") {
+              return a.title.localeCompare(b.title);
+            }
+            return 0;
+          });
+
+        return (
+          <div className="card mb-8">
+            <div className="flex flex-col gap-6 mb-8">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center">
+                  <LayoutIcon className="w-6 h-6 mr-3 text-primary-500" />
+                  Albums & Releases ({filtered.length})
+                </h2>
+                {existsInLidarr && lidarrAlbums.length > 0 && (
+                  <div className="flex gap-2">
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleBatchMonitor(true)}
+                        disabled={batchMonitoring}
+                        className="flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-green-500/50 hover:bg-green-50 dark:hover:bg-green-900/10 text-gray-700 dark:text-gray-300 rounded-2xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm"
+                      >
+                        {batchMonitoring ? <Loader className="w-3 h-3 animate-spin mr-2" /> : <Plus className="w-3 h-3 mr-2 text-green-500" />}
+                        Monitor All
+                      </button>
+                      <button
+                        onClick={() => handleBatchMonitor(false)}
+                        disabled={batchMonitoring}
+                        className="flex items-center px-4 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:border-red-500/50 hover:bg-red-50 dark:hover:bg-red-900/10 text-gray-700 dark:text-gray-300 rounded-2xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm"
+                      >
+                        {batchMonitoring ? <Loader className="w-3 h-3 animate-spin mr-2" /> : <XCircle className="w-3 h-3 mr-2 text-red-500" />}
+                        Unmonitor All
+                      </button>
                     </div>
                   </div>
-                );
-              })}
+                )}
+              </div>
+
+              {/* Search and Sort Toolbar */}
+              <div className="flex flex-col md:flex-row gap-4">
+                <div className="relative flex-1 group">
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 group-focus-within:text-primary-500 transition-colors w-4 h-4 text-gray-500" />
+                  <input
+                    type="text"
+                    placeholder="Search artist releases..."
+                    value={releaseSearch}
+                    onChange={(e) => setReleaseSearch(e.target.value)}
+                    className="w-full bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl py-3 pl-12 pr-4 outline-none focus:ring-4 focus:ring-primary-500/10 focus:border-primary-500 transition-all text-sm font-medium dark:text-gray-200"
+                  />
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-widest whitespace-nowrap">Sort By</span>
+                  <select
+                    value={releaseSort}
+                    onChange={(e) => setReleaseSort(e.target.value)}
+                    className="bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-2xl py-3 px-4 text-xs font-bold uppercase tracking-wider outline-none focus:ring-4 focus:ring-primary-500/10 transition-all cursor-pointer dark:text-gray-200"
+                  >
+                    <option value="year-desc">Year (Newest)</option>
+                    <option value="year-asc">Year (Oldest)</option>
+                    <option value="title">Title (A-Z)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Tab Filters */}
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-50 dark:border-gray-800/50">
+                {[
+                  { id: "all", label: "All" },
+                  { id: "albums", label: "Albums" },
+                  { id: "singles", label: "Singles & EPs" },
+                  { id: "broadcast", label: "Broadcasts" },
+                  { id: "other", label: "Other" },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveReleaseTab(tab.id)}
+                    className={`px-5 py-2.5 text-xs font-bold uppercase tracking-wider rounded-2xl transition-all ${activeReleaseTab === tab.id
+                      ? "bg-primary-500 text-white shadow-lg shadow-primary-500/30"
+                      : "bg-gray-50 dark:bg-gray-800/50 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent"
+                      }`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-3 max-h-[800px] overflow-y-auto pr-3 custom-scrollbar">
+              {filtered.length > 0 ? (
+                filtered.map((releaseGroup) => {
+                  const status = getAlbumStatus(releaseGroup.id);
+                  const lidarrAlbum = existsInLidarr ? lidarrAlbums.find(a => {
+                    const fid = String(a.foreignAlbumId).toLowerCase();
+                    const rid = String(releaseGroup.id).toLowerCase();
+                    return fid === rid || fid.includes(rid) || rid.includes(fid);
+                  }) : null;
+
+                  return (
+                    <div
+                      key={releaseGroup.id}
+                      onClick={() => {
+                        if (lidarrAlbum) {
+                          setSelectedAlbumForDetails({
+                            ...releaseGroup,
+                            lidarrId: lidarrAlbum.id,
+                            artistId: lidarrArtist?.id,
+                            monitored: lidarrAlbum.monitored,
+                            year: releaseGroup["first-release-date"]?.split("-")[0]
+                          });
+                        }
+                      }}
+                      className={`flex flex-col md:flex-row md:items-center justify-between p-5 bg-gray-50/50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700/50 rounded-2xl hover:bg-white dark:hover:bg-gray-800 hover:shadow-2xl hover:shadow-primary-500/5 dark:hover:shadow-none transition-all group ${lidarrAlbum ? "cursor-pointer" : ""}`}
+                    >
+                      <div className="flex-1 flex gap-5">
+                        <div className="w-16 h-16 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-sm">
+                          <Music className="w-8 h-8 text-gray-400 dark:text-gray-600" />
+                        </div>
+                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                          <h3 className="font-bold text-gray-900 dark:text-gray-100 text-lg group-hover:text-primary-500 transition-colors truncate">
+                            {releaseGroup.title}
+                          </h3>
+                          <div className="flex flex-wrap items-center gap-2 mt-2">
+                            {releaseGroup["first-release-date"] && (
+                              <span className="text-[10px] font-black text-primary-500 px-2 py-1 bg-primary-500/5 border border-primary-500/10 rounded-lg">
+                                {releaseGroup["first-release-date"].split("-")[0]}
+                              </span>
+                            )}
+                            {releaseGroup["primary-type"] && (
+                              <span className="text-[10px] font-black uppercase tracking-widest text-gray-500 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-2 py-1 rounded-lg">
+                                {releaseGroup["primary-type"]}
+                              </span>
+                            )}
+                            {releaseGroup["secondary-types"] &&
+                              releaseGroup["secondary-types"].length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {releaseGroup["secondary-types"].map(type => (
+                                    <span key={type} className="text-[10px] font-black uppercase tracking-widest text-gray-400 bg-gray-50 dark:bg-gray-900/50 border border-gray-100 dark:border-gray-800 px-2 py-1 rounded-lg">
+                                      {type}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4 mt-5 md:mt-0">
+                        {status ? (
+                          status.status === "available" ? (
+                            <div className="flex items-center gap-2">
+                              <span className="flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-bold uppercase tracking-wider bg-green-500/10 text-green-600 dark:text-green-400 border border-green-500/10 cursor-default">
+                                <CheckCircle className="w-4 h-4" />
+                                Available
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUnmonitorAlbum(releaseGroup.id, releaseGroup.title);
+                                }}
+                                disabled={unmonitoringAlbum === releaseGroup.id}
+                                className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all border border-transparent hover:border-red-500/10"
+                                title="Stop Monitoring"
+                              >
+                                {unmonitoringAlbum === releaseGroup.id ? (
+                                  <Loader className="w-4 h-4 animate-spin text-red-500" />
+                                ) : (
+                                  <XCircle className="w-5 h-5" />
+                                )}
+                              </button>
+                            </div>
+                          ) : status.status === "monitored" ? (
+                            <div className="flex items-center gap-2">
+                              <span className="flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-bold uppercase tracking-wider bg-primary-500/10 text-primary-600 dark:text-primary-400 border border-primary-500/10 cursor-default">
+                                <Clock className="w-4 h-4" />
+                                {status.trackCount > 0 ? `${status.trackFileCount}/${status.trackCount} tracks` : "Monitored"}
+                              </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUnmonitorAlbum(releaseGroup.id, releaseGroup.title);
+                                }}
+                                disabled={unmonitoringAlbum === releaseGroup.id}
+                                className="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-500/5 rounded-xl transition-all border border-transparent hover:border-red-500/10"
+                                title="Stop Monitoring"
+                              >
+                                {unmonitoringAlbum === releaseGroup.id ? (
+                                  <Loader className="w-4 h-4 animate-spin text-red-500" />
+                                ) : (
+                                  <XCircle className="w-5 h-5" />
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRequestAlbum(releaseGroup.id);
+                              }}
+                              disabled={requestingAlbum === releaseGroup.id}
+                              className="px-6 py-2.5 bg-primary-600 hover:bg-primary-500 text-white rounded-2xl text-xs font-bold uppercase tracking-wider transition-all shadow-lg shadow-primary-500/20 active:scale-95 flex items-center gap-2"
+                            >
+                              {requestingAlbum === releaseGroup.id ? (
+                                <Loader className="w-4 h-4 animate-spin" />
+                              ) : (
+                                "Request"
+                              )}
+                            </button>
+                          )
+                        ) : existsInLidarr ? (
+                          <span className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] pr-2 italic opacity-60">
+                            Not in Lidarr
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-black uppercase text-gray-400 tracking-[0.2em] pr-2 italic opacity-60">
+                            Add Artist First
+                          </span>
+                        )}
+
+                        <div className="flex items-center gap-2.5">
+                          {navidromeConnected && status?.status === "available" && (
+                            <button
+                              onClick={(e) => handlePlayOnNavidrome(e, releaseGroup)}
+                              disabled={playingOnNavidrome === releaseGroup.id}
+                              className="p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-gray-400 hover:text-primary-500 hover:bg-primary-500/5 transition-all shadow-sm group/navi"
+                              title="Play on Navidrome"
+                            >
+                              {playingOnNavidrome === releaseGroup.id ? (
+                                <RefreshCw className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Play className="w-4 h-4 group-hover/navi:scale-110 transition-transform fill-current text-primary-500" />
+                              )}
+                            </button>
+                          )}
+                          <a
+                            href={`https://musicbrainz.org/release-group/${releaseGroup.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-gray-400 hover:text-primary-500 hover:bg-primary-500/5 transition-all shadow-sm group/btn"
+                            title="View on MusicBrainz"
+                          >
+                            <Music className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                          </a>
+                          {health?.lidarrUrl && existsInLidarr && (
+                            <a
+                              href={`${health.lidarrUrl}/album/${lidarrAlbum?.id || ""}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-gray-400 hover:text-primary-500 hover:bg-primary-500/5 transition-all shadow-sm group/btn"
+                              title="View in Lidarr"
+                            >
+                              <LayoutIcon className="w-4 h-4 group-hover/btn:scale-110 transition-transform" />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-24 text-center">
+                  <div className="w-20 h-20 bg-gray-50 dark:bg-gray-800 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                    <Music className="w-10 h-10 text-gray-200 dark:text-gray-700" />
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">No Results Found</h3>
+                  <p className="text-gray-500 dark:text-gray-400 font-medium max-w-xs mx-auto">We couldn't find any releases matching your current filters or search query.</p>
+                  <button
+                    onClick={() => { setReleaseSearch(""); setActiveReleaseTab("all"); }}
+                    className="mt-8 px-6 py-3 border-2 border-primary-500/20 text-primary-500 hover:bg-primary-500 hover:text-white font-black text-[10px] uppercase tracking-[0.2em] rounded-2xl transition-all"
+                  >
+                    Clear All Filters
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {artist.aliases && artist.aliases.length > 0 && (
         <div className="card mt-8">

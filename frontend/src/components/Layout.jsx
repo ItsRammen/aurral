@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Search, Menu } from "lucide-react";
 import Sidebar from "./Sidebar";
+import { usePlayer } from "../contexts/PlayerContext";
 
 function Layout({ children, isHealthy, lidarrConfigured, lidarrStatus }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+  const { currentTrack } = usePlayer();
 
   useEffect(() => {
     setIsSidebarOpen(false);
@@ -20,6 +22,9 @@ function Layout({ children, isHealthy, lidarrConfigured, lidarrStatus }) {
       setSearchQuery("");
     }
   };
+
+  // Add padding when miniplayer is visible
+  const hasActivePlayer = !!currentTrack;
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 font-sans antialiased transition-colors duration-200">
@@ -49,7 +54,7 @@ function Layout({ children, isHealthy, lidarrConfigured, lidarrStatus }) {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search artists..."
+              placeholder="Search artists or songs..."
               className="block w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow shadow-sm"
             />
           </form>
