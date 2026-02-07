@@ -27,6 +27,11 @@ export const configurePassport = async () => {
         if (settings.oidcEnabled && settings.oidcClientId && settings.oidcIssuerUrl) {
             console.log("Configuring OIDC Strategy with issuer:", settings.oidcIssuerUrl);
 
+            // Priority: Settings > Env (APP_URL) > Env (FRONTEND_URL) > Localhost
+            const baseUrl = settings.appUrl || process.env.APP_URL || process.env.FRONTEND_URL || "http://localhost:3001";
+            // Ensure no trailing slash
+            const cleanBaseUrl = baseUrl.replace(/\/$/, '');
+
             // Dynamic Discovery
             let strategyConfig = {
                 issuer: settings.oidcIssuerUrl,
@@ -37,8 +42,7 @@ export const configurePassport = async () => {
                 clientSecret: settings.oidcClientSecret || "",
                 // Note: callbackURL must match where the router is mounted. 
                 // If mounted at /api/auth, then /oidc/callback becomes /api/auth/oidc/callback
-                // Use APP_URL if set, otherwise try FRONTEND_URL, otherwise localhost.
-                callbackURL: settings.oidcCallbackUrl || `${process.env.APP_URL || process.env.FRONTEND_URL || "http://localhost:3001"}/api/auth/oidc/callback`,
+                callbackURL: settings.oidcCallbackUrl || `${cleanBaseUrl}/api/auth/oidc/callback`,
                 scope: ['openid', 'profile', 'email']
             };
 
