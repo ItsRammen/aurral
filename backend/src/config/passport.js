@@ -91,10 +91,10 @@ export const configurePassport = async () => {
                         return done(null, false, { message: "Could not retrieve user profile from IdP" });
                     }
 
-                    console.log("✅ OIDC Profile Received:", { email, name: profile.displayName });
-
                     // Some IdPs return properties at top level, others in _json
                     const email = profile.emails?.[0]?.value || profile._json?.email;
+
+                    console.log("✅ OIDC Profile Received:", { email, name: profile.displayName });
 
                     if (!email) {
                         console.error("OIDC Login Failed: No email in profile", profile);
