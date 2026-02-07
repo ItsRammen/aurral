@@ -53,6 +53,7 @@ import { getArtistImage } from "./src/services/images.js";
 
 
 app.use(cors());
+app.set('trust proxy', 1); // Trust first proxy (Cloudflare/Nginx/Unraid)
 app.use(helmet({
   contentSecurityPolicy: false,
 }));
