@@ -84,12 +84,14 @@ export const configurePassport = async () => {
 
                 try {
                     if (!profile) {
-                        console.error("OIDC Login Failed: Could not find profile in arguments", args);
+                        console.error("❌ OIDC Login Failed: Could not find profile in arguments", args);
                         // If we can't find a profile, checking if any arg looks like an error
                         const errorArg = args.find(arg => arg instanceof Error);
                         if (errorArg) return done(errorArg);
                         return done(null, false, { message: "Could not retrieve user profile from IdP" });
                     }
+
+                    console.log("✅ OIDC Profile Received:", { email, name: profile.displayName });
 
                     // Some IdPs return properties at top level, others in _json
                     const email = profile.emails?.[0]?.value || profile._json?.email;
