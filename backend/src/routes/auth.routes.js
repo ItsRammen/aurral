@@ -120,18 +120,22 @@ router.get('/oidc/callback', (req, res, next) => {
         if (err) {
             console.error("OIDC Authentication Error:", err);
             const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-            return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(err.message || 'oidc_error')}`);
+            return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(err.message || 'oidc_error')}&debug=auth_error_${encodeURIComponent(err.message)}`);
         }
         if (!user) {
             console.error("OIDC Authentication Failed (No User):", info);
             const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
             const errorMsg = info?.message || 'oidc_failed';
-            return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(errorMsg)}`);
+            return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(errorMsg)}&debug=no_user_info_${encodeURIComponent(JSON.stringify(info))}`);
         }
 
         // Successful authentication
         req.logIn(user, (err) => {
-            if (err) return next(err);
+            if (err) {
+                console.error("Req.logIn failed:", err);
+                const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+                return res.redirect(`${frontendUrl}/login?error=login_session_failed&debug=login_session_error`);
+            }
 
             const token = jwt.sign(
                 { id: user.id, username: user.username, email: user.email, permissions: user.permissions },
@@ -139,8 +143,9 @@ router.get('/oidc/callback', (req, res, next) => {
                 { expiresIn: "7d" }
             );
 
+            console.log("✅ OIDC Login Success. Redirecting to frontend with token.");
             const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-            res.redirect(`${frontendUrl}/login?token=${token}`);
+            res.redirect(`${frontendUrl}/login?token=${token}&debug=success_token_generated`);
         });
     })(req, res, next);
 });
