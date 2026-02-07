@@ -77,7 +77,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('auth_token', token);
       setUser(user);
       setIsAuthenticated(true);
-      setNeedsSetup(false);
+      // Removed: setNeedsSetup(false); - Keeps user on /setup for Step 2
       return { success: true };
     } catch (error) {
       return {
@@ -109,6 +109,7 @@ export const AuthProvider = ({ children }) => {
       login,
       logout,
       initSetup,
+      checkAuthStatus, // Exposed for SetupPage
       hasPermission,
       needsSetup
     }}>

@@ -15,7 +15,7 @@ export default function SetupPage() {
     });
     const [error, setError] = useState(null);
     const [loading, setLoading] = useState(false);
-    const { initSetup } = useAuth();
+    const { initSetup, checkAuthStatus } = useAuth();
     const navigate = useNavigate();
 
     const handleInputChange = (e) => {
@@ -52,6 +52,7 @@ export default function SetupPage() {
                 lidarrUrl: formData.lidarrUrl,
                 lidarrApiKey: formData.lidarrApiKey
             });
+            await checkAuthStatus(); // Refresh status to set needsSetup: false
             navigate('/');
         } catch (err) {
             setError("Failed to save Lidarr settings: " + err.message);
@@ -101,8 +102,8 @@ export default function SetupPage() {
                                 <div className="flex justify-between w-full relative z-10">
                                     <div className="flex flex-col items-center gap-3">
                                         <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all duration-300 font-bold ${step >= 1
-                                                ? 'bg-primary-500 border-primary-500 text-white shadow-[0_0_15px_rgba(var(--primary-500),0.5)] scale-110'
-                                                : 'bg-transparent border-white/20 text-gray-500'
+                                            ? 'bg-primary-500 border-primary-500 text-white shadow-[0_0_15px_rgba(var(--primary-500),0.5)] scale-110'
+                                            : 'bg-transparent border-white/20 text-gray-500'
                                             }`}>
                                             {step > 1 ? <CheckCircle className="w-5 h-5" /> : '1'}
                                         </div>
@@ -111,8 +112,8 @@ export default function SetupPage() {
 
                                     <div className="flex flex-col items-center gap-3">
                                         <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 transition-all duration-300 font-bold ${step >= 2
-                                                ? 'bg-primary-500 border-primary-500 text-white shadow-[0_0_15px_rgba(var(--primary-500),0.5)] scale-110'
-                                                : 'bg-gray-900 border-white/10 text-gray-500'
+                                            ? 'bg-primary-500 border-primary-500 text-white shadow-[0_0_15px_rgba(var(--primary-500),0.5)] scale-110'
+                                            : 'bg-gray-900 border-white/10 text-gray-500'
                                             }`}>
                                             <Server className="w-4 h-4" />
                                         </div>
