@@ -53,7 +53,9 @@ import { getArtistImage } from "./src/services/images.js";
 
 
 app.use(cors());
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false,
+}));
 app.use(express.json());
 
 // Session configuration for Passport
