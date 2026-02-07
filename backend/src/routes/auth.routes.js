@@ -115,26 +115,39 @@ router.get('/oidc', async (req, res, next) => {
 });
 
 // OIDC Callback
+// Helper to get frontend URL
+const getFrontendUrl = Async => {
+    // We can't use async here easily inside the callback if we want to keep it clean, 
+    // but we can use the env vars as quick fallback or better yet, assume the callback handles it.
+    // Actually, we can make the route async.
+    return process.env.APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
+};
+
+// We need to load settings to get appUrl roughly.
+import { loadSettings } from "../services/api.js";
+
 router.get('/oidc/callback', (req, res, next) => {
-    passport.authenticate('oidc', (err, user, info) => {
+    passport.authenticate('oidc', async (err, user, info) => {
+        const settings = await loadSettings();
+        const frontendUrl = settings.appUrl || process.env.APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
+        // Remove trailing slash
+        const cleanFrontendUrl = frontendUrl.replace(/\/$/, '');
+
         if (err) {
             console.error("OIDC Authentication Error:", err);
-            const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-            return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(err.message || 'oidc_error')}&debug=auth_error_${encodeURIComponent(err.message)}`);
+            return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(err.message || 'oidc_error')}&debug=auth_error_${encodeURIComponent(err.message)}`);
         }
         if (!user) {
             console.error("OIDC Authentication Failed (No User):", info);
-            const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
             const errorMsg = info?.message || 'oidc_failed';
-            return res.redirect(`${frontendUrl}/login?error=${encodeURIComponent(errorMsg)}&debug=no_user_info_${encodeURIComponent(JSON.stringify(info))}`);
+            return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(errorMsg)}&debug=no_user_info_${encodeURIComponent(JSON.stringify(info))}`);
         }
 
         // Successful authentication
         req.logIn(user, (err) => {
             if (err) {
                 console.error("Req.logIn failed:", err);
-                const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-                return res.redirect(`${frontendUrl}/login?error=login_session_failed&debug=login_session_error`);
+                return res.redirect(`${cleanFrontendUrl}/login?error=login_session_failed&debug=login_session_error`);
             }
 
             const token = jwt.sign(
@@ -144,8 +157,7 @@ router.get('/oidc/callback', (req, res, next) => {
             );
 
             console.log("✅ OIDC Login Success. Redirecting to frontend with token.");
-            const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-            res.redirect(`${frontendUrl}/login?token=${token}&debug=success_token_generated`);
+            res.redirect(`${cleanFrontendUrl}/login?token=${token}&debug=success_token_generated`);
         });
     })(req, res, next);
 });
