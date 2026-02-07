@@ -7,6 +7,9 @@ dotenv.config();
 const getJwtSecret = () => process.env.JWT_SECRET || "your-secret-key-change-this";
 
 export const authMiddleware = async (req, res, next) => {
+    // Debug logging to trace requests
+    console.log(`🔍 AuthMiddleware: ${req.method} ${req.path}`);
+
     if (
         req.path === "/api/health" ||
         req.path === "/api/auth/login" ||
