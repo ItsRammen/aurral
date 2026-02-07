@@ -59,7 +59,7 @@ export default function GeneralTab({ settings, handleUpdate }) {
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Version</label>
                             <div className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 text-sm text-gray-500 dark:text-gray-400 font-mono">
-                                v{packageJson.version}
+                                v{__APP_VERSION__}
                             </div>
                         </div>
                     </div>
