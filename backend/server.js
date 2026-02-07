@@ -80,6 +80,15 @@ setTimeout(configurePassport, 2000);
 // The new passport.js file has serialization at the top level. Importing it executes that.
 // So just importing it is enough.
 
+// Serve static files from the frontend build directory
+const frontendDistPath = path.join(process.cwd(), "frontend", "dist");
+
+if (fs.existsSync(frontendDistPath)) {
+  app.use(express.static(frontendDistPath));
+}
+
+// Global Auth Middleware
+// effectively blocks access to anything below this that isn't excluded inside the middleware itself
 app.use(authMiddleware);
 
 // Routes
@@ -107,6 +116,17 @@ app.use("/api", discoveryRoutes);
 app.use("/api/search", searchRoutes);
 app.use("/api/artists", artistsRoutes);
 app.use("/api/requests", requestsRoutes);
+
+// Catch-all route for SPA (must be after API routes but before error handling if any)
+// This ensures that refreshing a page like /settings works by serving index.html
+if (fs.existsSync(frontendDistPath)) {
+  app.get("*", (req, res, next) => {
+    if (req.path.startsWith("/api/")) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDistPath, "index.html"));
+  });
+}
 
 // API Helpers
 
@@ -167,19 +187,8 @@ app.get("/api/health", async (req, res) => {
 
 
 // Serve static files from the frontend build directory
-const frontendDistPath = path.join(process.cwd(), "frontend", "dist");
+// Static file serving moved to top
 
-if (fs.existsSync(frontendDistPath)) {
-  app.use(express.static(frontendDistPath));
-
-  // Catch-all route for SPA
-  app.get("*", (req, res, next) => {
-    if (req.path.startsWith("/api/")) {
-      return next();
-    }
-    res.sendFile(path.join(frontendDistPath, "index.html"));
-  });
-}
 
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
