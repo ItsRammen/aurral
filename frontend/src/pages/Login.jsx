@@ -61,7 +61,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, setUser } = useAuth();
+  const { login, setUser, checkAuthStatus } = useAuth();
 
   // Auth Config State
   const [oidcEnabled, setOidcEnabled] = useState(() => {
@@ -91,8 +91,8 @@ const Login = () => {
 
     if (token) {
       localStorage.setItem('auth_token', token);
-      api.get('/auth/me').then(res => {
-        setUser(res.data);
+      // Use checkAuthStatus to properly update both user and isAuthenticated state
+      checkAuthStatus().then(() => {
         navigate('/');
       }).catch(() => setError('Failed to verify token'));
     }
