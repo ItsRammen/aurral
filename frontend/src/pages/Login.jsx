@@ -84,16 +84,6 @@ const Login = () => {
     const params = new URLSearchParams(location.search);
     const token = params.get('token');
     const errorMsg = params.get('error');
-    const debugMsg = params.get('debug');
-
-    console.log("🔐 Login Page Mounted");
-    console.log("📍 Location:", location.pathname + location.search);
-    console.log("❓ Params:", Object.fromEntries(params.entries()));
-
-    if (debugMsg) {
-      console.warn("🐛 Server Debug Message:", debugMsg);
-      // Optional: Show toast or alert for debug? No, console is what they asked for.
-    }
 
     if (errorMsg) {
       console.error("❌ Login Error Parameter:", errorMsg);

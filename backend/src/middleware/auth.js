@@ -8,7 +8,7 @@ const getJwtSecret = () => process.env.JWT_SECRET || "your-secret-key-change-thi
 
 export const authMiddleware = async (req, res, next) => {
     // Debug logging to trace requests
-    console.log(`🔍 AuthMiddleware: ${req.method} ${req.path}`);
+    // console.log(`🔍 AuthMiddleware: ${req.method} ${req.path}`);
 
     if (
         req.path === "/api/health" ||
