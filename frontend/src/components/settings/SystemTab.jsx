@@ -150,6 +150,29 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
                 </div>
             </div>
 
+            {/* Network Configuration */}
+            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm mb-6">
+                <h3 className="text-lg font-black text-gray-900 dark:text-white mb-6">Network Configuration</h3>
+                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl">
+                    <div>
+                        <h5 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                            Behind Reverse Proxy
+                            {settings.proxyTrusted && <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full uppercase">Enabled</span>}
+                        </h5>
+                        <p className="text-xs text-gray-500">Enable if Aurral is behind Nginx, Apache, Cloudflare, etc. to correctly identify client IPs and protocol.</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                            type="checkbox"
+                            checked={settings.proxyTrusted || false}
+                            onChange={(e) => handleUpdate("proxyTrusted", e.target.checked)}
+                            className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
+                    </label>
+                </div>
+            </div>
+
             {/* Scheduler */}
             <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm">
                 <h3 className="text-lg font-black text-gray-900 dark:text-white mb-6">Scheduler & Jobs</h3>
@@ -189,9 +212,9 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
                                         <td className="py-3 px-4 text-gray-500">{getLastRun(job)}</td>
                                         <td className="py-3 px-4">
                                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getJobState(job) === 'running' ? 'bg-blue-100 text-blue-600' :
-                                                    getJobState(job) === 'completed' ? 'bg-green-100 text-green-600' :
-                                                        getJobState(job) === 'failed' ? 'bg-red-100 text-red-600' :
-                                                            'bg-gray-100 text-gray-500'
+                                                getJobState(job) === 'completed' ? 'bg-green-100 text-green-600' :
+                                                    getJobState(job) === 'failed' ? 'bg-red-100 text-red-600' :
+                                                        'bg-gray-100 text-gray-500'
                                                 }`}>
                                                 {getJobState(job)}
                                             </span>
