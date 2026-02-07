@@ -32,6 +32,9 @@ export const configurePassport = async () => {
             // Ensure no trailing slash
             const cleanBaseUrl = baseUrl.replace(/\/$/, '');
 
+            console.log("ℹ️ OIDC Config: Using Base URL:", cleanBaseUrl);
+            console.log("ℹ️ OIDC Config: Callback URL set to:", `${cleanBaseUrl}/api/auth/oidc/callback`);
+
             // Dynamic Discovery
             let strategyConfig = {
                 issuer: settings.oidcIssuerUrl,
