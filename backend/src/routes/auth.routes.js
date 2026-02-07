@@ -115,17 +115,7 @@ router.get('/oidc', async (req, res, next) => {
 });
 
 // OIDC Callback
-// Helper to get frontend URL
-const getFrontendUrl = Async => {
-    // We can't use async here easily inside the callback if we want to keep it clean, 
-    // but we can use the env vars as quick fallback or better yet, assume the callback handles it.
-    // Actually, we can make the route async.
-    return process.env.APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
-};
-
-// We need to load settings to get appUrl roughly.
-import { loadSettings } from "../services/api.js";
-
+// OIDC Callback
 router.get('/oidc/callback', (req, res, next) => {
     passport.authenticate('oidc', async (err, user, info) => {
         const settings = await loadSettings();
