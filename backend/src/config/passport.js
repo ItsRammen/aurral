@@ -32,9 +32,6 @@ export const configurePassport = async () => {
             // Ensure no trailing slash
             const cleanBaseUrl = baseUrl.replace(/\/$/, '');
 
-            console.log("ℹ️ OIDC Config: Using Base URL:", cleanBaseUrl);
-            console.log("ℹ️ OIDC Config: Callback URL set to:", `${cleanBaseUrl}/api/auth/oidc/callback`);
-
             // Dynamic Discovery
             let strategyConfig = {
                 issuer: settings.oidcIssuerUrl,
@@ -93,8 +90,6 @@ export const configurePassport = async () => {
 
                     // Some IdPs return properties at top level, others in _json
                     const email = profile.emails?.[0]?.value || profile._json?.email;
-
-                    console.log("✅ OIDC Profile Received:", { email, name: profile.displayName });
 
                     if (!email) {
                         console.error("OIDC Login Failed: No email in profile", profile);

@@ -135,19 +135,19 @@ router.get('/oidc/callback', (req, res, next) => {
 
         if (err) {
             console.error("OIDC Authentication Error:", err);
-            return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(err.message || 'oidc_error')}&debug=auth_error_${encodeURIComponent(err.message)}`);
+            return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(err.message || 'oidc_error')}`);
         }
         if (!user) {
             console.error("OIDC Authentication Failed (No User):", info);
             const errorMsg = info?.message || 'oidc_failed';
-            return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(errorMsg)}&debug=no_user_info_${encodeURIComponent(JSON.stringify(info))}`);
+            return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(errorMsg)}`);
         }
 
         // Successful authentication
         req.logIn(user, (err) => {
             if (err) {
                 console.error("Req.logIn failed:", err);
-                return res.redirect(`${cleanFrontendUrl}/login?error=login_session_failed&debug=login_session_error`);
+                return res.redirect(`${cleanFrontendUrl}/login?error=login_session_failed`);
             }
 
             const token = jwt.sign(
@@ -156,8 +156,7 @@ router.get('/oidc/callback', (req, res, next) => {
                 { expiresIn: "7d" }
             );
 
-            console.log("✅ OIDC Login Success. Redirecting to frontend with token.");
-            res.redirect(`${cleanFrontendUrl}/login?token=${token}&debug=success_token_generated`);
+            res.redirect(`${cleanFrontendUrl}/login?token=${token}`);
         });
     })(req, res, next);
 });
