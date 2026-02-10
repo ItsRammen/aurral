@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Loader,
   Music,
+  Disc,
   ExternalLink,
   CheckCircle,
   Plus,
@@ -12,15 +13,17 @@ import {
 import {
   searchArtists,
   lookupArtistsInLidarrBatch,
-  getArtistCover,
   searchArtistsByTag,
   searchRecordings,
+  searchAlbums,
   getNavidromeStatus,
   getNavidromePlaybackUrl,
 } from "../utils/api";
 import AddArtistModal from "../components/AddArtistModal";
+import LoadingSpinner from "../components/LoadingSpinner";
 import ArtistImage from "../components/ArtistImage";
 import { useToast } from "../contexts/ToastContext";
+import PageHeader from "../components/PageHeader";
 
 function SearchResultsPage() {
   const [searchParams] = useSearchParams();
@@ -28,8 +31,10 @@ function SearchResultsPage() {
   const type = searchParams.get("type");
   const [results, setResults] = useState([]);
   const [recordings, setRecordings] = useState([]);
+  const [albums, setAlbums] = useState([]);
   const [loading, setLoading] = useState(false);
   const [recordingsLoading, setRecordingsLoading] = useState(false);
+  const [albumsLoading, setAlbumsLoading] = useState(false);
   const [navidromeConnected, setNavidromeConnected] = useState(false);
   const [playingOnNavidrome, setPlayingOnNavidrome] = useState(null); // Track ID if searching
   const [error, setError] = useState(null);
@@ -57,11 +62,13 @@ function SearchResultsPage() {
       if (!query.trim()) {
         setResults([]);
         setRecordings([]);
+        setAlbums([]);
         return;
       }
 
       setLoading(true);
       setRecordingsLoading(true);
+      setAlbumsLoading(true);
       setError(null);
 
       // Perform artist search
@@ -122,6 +129,19 @@ function SearchResultsPage() {
         console.error("Recording search failed:", err);
       } finally {
         setRecordingsLoading(false);
+      }
+
+      // Perform album search
+      try {
+        if (type !== "tag") {
+          const data = await searchAlbums(query.trim());
+          const albumResults = data.albums || [];
+          setAlbums(albumResults);
+        }
+      } catch (err) {
+        console.error("Album search failed:", err);
+      } finally {
+        setAlbumsLoading(false);
       }
     };
 
@@ -190,19 +210,18 @@ function SearchResultsPage() {
   };
 
   return (
-    <div className="animate-fade-in">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-          {type === "tag" ? "Genre Results" : "Search Results"}
-        </h1>
-        {query && (
-          <p className="text-gray-600 dark:text-gray-400">
-            {type === "tag"
+    <div className="page-container">
+      <PageHeader
+        title={type === "tag" ? "Genre Results" : "Search Results"}
+        subtitle={
+          query
+            ? type === "tag"
               ? `Top artists for tag "${query}"`
-              : `Showing results for "${query}"`}
-          </p>
-        )}
-      </div>
+              : `Showing results for "${query}"`
+            : undefined
+        }
+        showBack
+      />
 
       {error && (
         <div className="mb-6 bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-500/20 rounded-lg p-4">
@@ -212,7 +231,7 @@ function SearchResultsPage() {
 
       {loading && (
         <div className="flex justify-center items-center py-20">
-          <Loader className="w-12 h-12 text-primary-600 animate-spin" />
+          <LoadingSpinner size="xl" />
         </div>
       )}
 
@@ -330,7 +349,7 @@ function SearchResultsPage() {
 
                     {recordingsLoading ? (
                       <div className="flex justify-start items-center py-10">
-                        <Loader className="w-8 h-8 text-primary-600 animate-spin" />
+                        <LoadingSpinner size="lg" />
                       </div>
                     ) : (
                       <div className="space-y-8">
@@ -429,15 +448,73 @@ function SearchResultsPage() {
                   </div>
                 );
 
-                const separator = (results.length > 0 && (recordings.length > 0 || recordingsLoading)) && (
-                  <div className="h-px bg-gray-200 dark:bg-gray-800 my-10 w-full" />
+                const albumsSection = (albums.length > 0 || albumsLoading) && (
+                  <div className="animate-slide-up">
+                    <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-6 flex items-center gap-2">
+                      <Disc className="w-6 h-6 text-primary-500" />
+                      Albums
+                    </h2>
+
+                    {albumsLoading ? (
+                      <div className="flex justify-start items-center py-10">
+                        <LoadingSpinner size="lg" />
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                        {albums.slice(0, 12).map((album, idx) => (
+                          <div
+                            key={idx}
+                            className="group relative flex flex-col w-full min-w-0"
+                          >
+                            <div
+                              onClick={() => navigate(`/search?q=${encodeURIComponent(album.artist)}`)}
+                              className="relative aspect-square mb-3 overflow-hidden rounded-xl bg-gray-200 dark:bg-gray-800 cursor-pointer shadow-sm group-hover:shadow-md transition-all"
+                            >
+                              {album.image ? (
+                                <img
+                                  src={album.image}
+                                  alt={album.name}
+                                  className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                />
+                              ) : (
+                                <div className="h-full w-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800">
+                                  <Disc className="w-12 h-12 text-gray-400 dark:text-gray-500" />
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="flex flex-col min-w-0">
+                              <h3
+                                onClick={() => navigate(`/search?q=${encodeURIComponent(album.artist)}`)}
+                                className="font-semibold text-gray-900 dark:text-gray-100 truncate hover:text-primary-500 cursor-pointer"
+                              >
+                                {album.name}
+                              </h3>
+                              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                                {album.artist}
+                              </p>
+                              {album.year && (
+                                <p className="text-xs text-gray-400 dark:text-gray-500">
+                                  {album.year}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 );
+
+                const separator = <div className="h-px bg-gray-200 dark:bg-gray-800 my-10 w-full" />;
 
                 if (shouldPrioritizeSongs) {
                   return (
                     <>
                       {songsSection}
-                      {separator}
+                      {(albums.length > 0 || albumsLoading) && separator}
+                      {albumsSection}
+                      {results.length > 0 && separator}
                       {artistsSection}
                     </>
                   );
@@ -446,7 +523,9 @@ function SearchResultsPage() {
                 return (
                   <>
                     {artistsSection}
-                    {separator}
+                    {(albums.length > 0 || albumsLoading) && results.length > 0 && separator}
+                    {albumsSection}
+                    {(recordings.length > 0 || recordingsLoading) && (albums.length > 0 || results.length > 0) && separator}
                     {songsSection}
                   </>
                 );

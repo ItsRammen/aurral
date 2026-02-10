@@ -21,10 +21,11 @@ import {
   Search,
   Play,
   RefreshCw,
+  AlertTriangle,
+  Download,
 } from "lucide-react";
 import {
   getArtistDetails,
-  getArtistCover,
   lookupArtistInLidarr,
   getLidarrAlbums,
   updateLidarrAlbum,
@@ -49,12 +50,14 @@ import AddArtistModal from "../components/AddArtistModal";
 import ArtistSettingsModal from "../components/ArtistSettingsModal";
 import AlbumTracksModal from "../components/AlbumTracksModal";
 import ArtistImage from "../components/ArtistImage";
+import ReportIssueModal from "../components/ReportIssueModal";
+
 
 function ArtistDetailsPage() {
   const { mbid } = useParams();
   const navigate = useNavigate();
   const [artist, setArtist] = useState(null);
-  const [coverImages, setCoverImages] = useState([]);
+  const [imageError, setImageError] = useState(false);
   const [lidarrArtist, setLidarrArtist] = useState(null);
   const [lidarrAlbums, setLidarrAlbums] = useState([]);
   const [similarArtists, setSimilarArtists] = useState([]);
@@ -84,6 +87,9 @@ function ArtistDetailsPage() {
   const [activeReleaseTab, setActiveReleaseTab] = useState("all");
   const [navidromeConnected, setNavidromeConnected] = useState(false);
   const [playingOnNavidrome, setPlayingOnNavidrome] = useState(null);
+  const [downloadQueue, setDownloadQueue] = useState([]);
+  const [showReportIssueModal, setShowReportIssueModal] = useState(false);
+  const [issueAlbum, setIssueAlbum] = useState(null);
   const { showSuccess, showError } = useToast();
   const { play } = usePlayer();
   const { user } = useAuth();
@@ -119,14 +125,8 @@ function ArtistDetailsPage() {
           console.error("Failed to fetch similar artists:", err);
         }
 
-        try {
-          const coverData = await getArtistCover(mbid);
-          if (coverData.images && coverData.images.length > 0) {
-            setCoverImages(coverData.images);
-          }
-        } catch (err) {
-          console.log("No cover art available");
-        }
+        // Reset image error state when mbid changes
+        setImageError(false);
         try {
           const lookup = await lookupArtistInLidarr(mbid);
           setExistsInLidarr(lookup.exists);
@@ -165,6 +165,26 @@ function ArtistDetailsPage() {
     checkNavi();
   }, []);
 
+  // Poll download queue for active downloads
+  useEffect(() => {
+    const fetchQueue = async () => {
+      if (!lidarrArtist?.id) return;
+      try {
+        const response = await api.get("/lidarr/queue/progress");
+        // Filter to only this artist's downloads
+        const artistDownloads = response.data.items?.filter(
+          item => item.artistName === lidarrArtist?.artistName
+        ) || [];
+        setDownloadQueue(artistDownloads);
+      } catch (e) {
+        // Silently fail
+      }
+    };
+    fetchQueue();
+    const interval = setInterval(fetchQueue, 5000);
+    return () => clearInterval(interval);
+  }, [lidarrArtist?.id, lidarrArtist?.artistName]);
+
   const fetchLidarrData = async (artistId) => {
     if (!artistId) return;
 
@@ -193,13 +213,33 @@ function ArtistDetailsPage() {
     if (response?.pending) {
       setPendingRequest({
         ...addedArtist,
-        requestedBy: "You", // Or fetch current user
+        requestedBy: "You",
         status: "pending_approval"
       });
       showSuccess(`Request for ${addedArtist.name} submitted for admin approval.`);
     } else {
       setExistsInLidarr(true);
-      showSuccess(`Successfully added ${addedArtist.name} to Lidarr!`);
+
+      // Show contextual success message based on add mode
+      const { addMode, albumCount } = response;
+      if (addMode === "artist-only") {
+        showSuccess(
+          `${addedArtist.name} added to library! Select albums below to start monitoring.`,
+          { duration: 8000 }
+        );
+      } else if (addMode === "all") {
+        showSuccess(
+          `${addedArtist.name} added with all albums monitored. Lidarr will search for downloads.`,
+          { duration: 5000 }
+        );
+      } else if (albumCount > 0) {
+        showSuccess(
+          `${addedArtist.name} added with ${albumCount} album${albumCount !== 1 ? 's' : ''} monitored.`,
+          { duration: 5000 }
+        );
+      } else {
+        showSuccess(`Successfully added ${addedArtist.name} to library!`);
+      }
     }
 
     setShowAddModal(false);
@@ -221,6 +261,7 @@ function ArtistDetailsPage() {
       }
     }, 1500);
   };
+
 
 
   const handleUnmonitorAlbum = async (albumId, title) => {
@@ -472,13 +513,7 @@ function ArtistDetailsPage() {
     return types[type] || type;
   };
 
-  const getCoverImage = () => {
-    if (coverImages.length > 0) {
-      const frontCover = coverImages.find((img) => img.front);
-      return frontCover?.image || coverImages[0]?.image;
-    }
-    return null;
-  };
+
 
   if (loading) {
     return (
@@ -512,7 +547,7 @@ function ArtistDetailsPage() {
     return null;
   }
 
-  const coverImage = getCoverImage();
+  const coverImage = !imageError ? `/api/artists/${mbid}/image` : null;
   const lifeSpan = formatLifeSpan(artist["life-span"]);
 
   return (
@@ -533,6 +568,7 @@ function ArtistDetailsPage() {
                 src={coverImage}
                 alt={artist.name}
                 className="w-full h-full object-cover"
+                onError={() => setImageError(true)}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
@@ -752,9 +788,16 @@ function ArtistDetailsPage() {
           .filter(rg => {
             const matchesSearch = rg.title.toLowerCase().includes(releaseSearch.toLowerCase());
             const displayType = getDisplayType(rg);
+
+            // Check if album is downloading
+            const isDownloading = downloadQueue.some(q =>
+              q.albumTitle?.toLowerCase() === rg.title.toLowerCase()
+            );
+
             const matchesTab = activeReleaseTab === "all" ||
               (activeReleaseTab === "albums" && displayType === "Album") ||
               (activeReleaseTab === "singles" && displayType === "Single / EP") ||
+              (activeReleaseTab === "downloading" && isDownloading) ||
               (activeReleaseTab === "broadcast" && displayType === "Broadcast") ||
               (activeReleaseTab === "other" && displayType === "Other");
             return matchesSearch && matchesTab;
@@ -784,7 +827,7 @@ function ArtistDetailsPage() {
                   <LayoutIcon className="w-6 h-6 mr-3 text-primary-500" />
                   Albums & Releases ({filtered.length})
                 </h2>
-                {existsInLidarr && lidarrAlbums.length > 0 && (
+                {existsInLidarr && lidarrAlbums?.length > 0 && (
                   <div className="flex gap-2">
                     <div className="flex gap-2">
                       <button
@@ -840,17 +883,19 @@ function ArtistDetailsPage() {
                   { id: "all", label: "All" },
                   { id: "albums", label: "Albums" },
                   { id: "singles", label: "Singles & EPs" },
+                  { id: "downloading", label: "Downloading", icon: Download },
                   { id: "broadcast", label: "Broadcasts" },
                   { id: "other", label: "Other" },
                 ].map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveReleaseTab(tab.id)}
-                    className={`px-5 py-2.5 text-xs font-bold uppercase tracking-wider rounded-2xl transition-all ${activeReleaseTab === tab.id
+                    className={`flex items-center gap-1.5 px-5 py-2.5 text-xs font-bold uppercase tracking-wider rounded-2xl transition-all ${activeReleaseTab === tab.id
                       ? "bg-primary-500 text-white shadow-lg shadow-primary-500/30"
                       : "bg-gray-50 dark:bg-gray-800/50 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 border border-transparent"
                       }`}
                   >
+                    {tab.icon && <tab.icon className="w-3.5 h-3.5" />}
                     {tab.label}
                   </button>
                 ))}
@@ -861,11 +906,16 @@ function ArtistDetailsPage() {
               {filtered.length > 0 ? (
                 filtered.map((releaseGroup) => {
                   const status = getAlbumStatus(releaseGroup.id);
-                  const lidarrAlbum = existsInLidarr ? lidarrAlbums.find(a => {
+                  const lidarrAlbum = (existsInLidarr && lidarrAlbums) ? lidarrAlbums.find(a => {
                     const fid = String(a.foreignAlbumId).toLowerCase();
                     const rid = String(releaseGroup.id).toLowerCase();
                     return fid === rid || fid.includes(rid) || rid.includes(fid);
                   }) : null;
+
+                  // Check if album is downloading
+                  const downloadInfo = downloadQueue.find(q =>
+                    q.albumTitle?.toLowerCase() === releaseGroup.title.toLowerCase()
+                  );
 
                   return (
                     <div
@@ -917,6 +967,28 @@ function ArtistDetailsPage() {
                       </div>
 
                       <div className="flex items-center gap-4 mt-5 md:mt-0">
+                        {/* Download Progress Indicator */}
+                        {downloadInfo && (
+                          <div className="flex items-center gap-3 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-2xl">
+                            <Download className="w-4 h-4 text-blue-500 animate-bounce" />
+                            <div className="flex flex-col gap-1">
+                              <div className="flex items-center gap-2">
+                                <div className="w-24 h-2 bg-blue-200 dark:bg-blue-900 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                                    style={{ width: `${downloadInfo.progressPercent || 0}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-bold text-blue-600 dark:text-blue-400">
+                                  {Math.round(downloadInfo.progressPercent || 0)}%
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-blue-500">
+                                {downloadInfo.status || "Downloading..."}
+                              </span>
+                            </div>
+                          </div>
+                        )}
                         {status ? (
                           status.status === "available" ? (
                             <div className="flex items-center gap-2">
@@ -1001,6 +1073,20 @@ function ArtistDetailsPage() {
                               ) : (
                                 <Play className="w-4 h-4 group-hover/navi:scale-110 transition-transform fill-current text-primary-500" />
                               )}
+                            </button>
+                          )}
+                          {/* Report Issue button - show when album exists in Lidarr */}
+                          {lidarrAlbum && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIssueAlbum(lidarrAlbum);
+                                setShowReportIssueModal(true);
+                              }}
+                              className="p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-gray-400 hover:text-yellow-500 hover:bg-yellow-500/5 transition-all shadow-sm group/report"
+                              title="Report Issue"
+                            >
+                              <AlertTriangle className="w-4 h-4 group-hover/report:scale-110 transition-transform" />
                             </button>
                           )}
                           <a
@@ -1166,6 +1252,18 @@ function ArtistDetailsPage() {
           artistName={artist.name}
           onClose={() => setSelectedAlbumForDetails(null)}
           onRequest={handleRequestAlbum}
+        />
+      )}
+
+      {showReportIssueModal && (
+        <ReportIssueModal
+          isOpen={showReportIssueModal}
+          onClose={() => {
+            setShowReportIssueModal(false);
+            setIssueAlbum(null);
+          }}
+          artist={lidarrArtist}
+          album={issueAlbum}
         />
       )}
     </div>

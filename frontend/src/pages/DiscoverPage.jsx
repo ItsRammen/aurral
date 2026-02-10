@@ -26,6 +26,9 @@ import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
 import AddArtistModal from "../components/AddArtistModal";
 import ArtistImage from "../components/ArtistImage";
+import ArtistStatusBadge from "../components/ArtistStatusBadge";
+import LoadingSpinner from "../components/LoadingSpinner";
+import TabNav from "../components/TabNav";
 
 function DiscoverPage() {
   const [data, setData] = useState(null);
@@ -146,18 +149,19 @@ function DiscoverPage() {
   };
 
   const getLidarrArtistImage = (artist) => {
-    if (artist.images && artist.images.length > 0) {
+    // Use local proxy if we have an MBID (foreignArtistId in Lidarr)
+    if (artist.foreignArtistId) {
+      return `/api/artists/${artist.foreignArtistId}/image`;
+    }
+    // Fallback to Lidarr mediacover
+    if (artist.images && artist.images.length > 0 && artist.id) {
       const posterImage = artist.images.find(
         (img) => img.coverType === "poster" || img.coverType === "fanart",
       );
       const image = posterImage || artist.images[0];
-
-      if (image && artist.id) {
-        const coverType = image.coverType || "poster";
-        const filename = `${coverType}.jpg`;
-        return `/api/lidarr/mediacover/${artist.id}/${filename}`;
-      }
-      return image?.remoteUrl || image?.url || null;
+      const coverType = image.coverType || "poster";
+      const filename = `${coverType}.jpg`;
+      return `/api/lidarr/mediacover/${artist.id}/${filename}`;
     }
     return null;
   };
@@ -228,25 +232,11 @@ function DiscoverPage() {
           />
 
           {status && (
-            <div
-              className={`absolute bottom-2 left-2 right-2 py-1 px-2 rounded text-[10px] font-bold uppercase text-center backdrop-blur-md shadow-lg ${status === "available"
-                ? "bg-green-500/90 text-white"
-                : status === "processing"
-                  ? "bg-blue-500/90 text-white"
-                  : "bg-yellow-500/90 text-white"
-                }`}
-            >
-              {artist.statistics ? (
-                <span className="flex flex-col leading-tight">
-                  <span>{status === "available" ? "Available" : status}</span>
-                  <span className="text-[8px] opacity-90 normal-case font-medium">
-                    {artist.statistics.trackCount} / {artist.statistics.totalTrackCount} Tracks
-                  </span>
-                </span>
-              ) : (
-                status
-              )}
-            </div>
+            <ArtistStatusBadge
+              artist={artist}
+              variant="overlay"
+              showStats={!!artist.statistics}
+            />
           )}
 
           <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
@@ -324,14 +314,8 @@ function DiscoverPage() {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-32">
-        <Loader className="w-12 h-12 text-primary-500 animate-spin mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700 dark:text-gray-300">
-          Curating your recommendations...
-        </h2>
-        <p className="text-gray-500 dark:text-gray-400 mt-2">
-          Analyzing your library to find hidden gems
-        </p>
+      <div className="flex flex-col items-center justify-center py-20">
+        <LoadingSpinner size="xl" text="Loading discovery..." />
       </div>
     );
   }
@@ -474,28 +458,17 @@ function DiscoverPage() {
       </section>
 
       {/* Tab Switcher */}
-      <div className="flex items-center justify-center border-b border-gray-200 dark:border-gray-800">
-        <div className="flex gap-8 overflow-x-auto">
-          {[
-            { id: "personal", label: "For You", icon: Sparkles },
-            ...(navidromeConnected && user?.navidromeUsername ? [{ id: "navidrome", label: "Listening History", icon: History }] : []),
-            { id: "server", label: "Aurral Wide", icon: PlayCircle },
-            ...(globalTop?.length > 0 || globalTopTracks?.length > 0 ? [{ id: "charts", label: "Top Hits", icon: TrendingUp }] : []),
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 py-4 px-1 border-b-2 font-medium text-sm transition-all whitespace-nowrap ${activeTab === tab.id
-                ? "border-primary-500 text-primary-600 dark:text-primary-400"
-                : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-700"
-                }`}
-            >
-              <tab.icon className={`w-4 h-4 ${activeTab === tab.id ? "animate-pulse" : ""}`} />
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <TabNav
+        tabs={[
+          { id: "personal", label: "For You", icon: Sparkles },
+          ...(navidromeConnected && user?.navidromeUsername ? [{ id: "navidrome", label: "Listening History", icon: History }] : []),
+          { id: "server", label: "Aurral Wide", icon: PlayCircle },
+          ...(globalTop?.length > 0 || globalTopTracks?.length > 0 ? [{ id: "charts", label: "Top Hits", icon: TrendingUp }] : []),
+        ]}
+        activeTab={activeTab}
+        onChange={setActiveTab}
+        centered
+      />
 
       <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
         {activeTab === "personal" && (
@@ -524,6 +497,7 @@ function DiscoverPage() {
                         id: request.mbid,
                         name: request.name,
                         image: request.image,
+                        statistics: request.statistics,
                         subtitle: `Requested ${new Date(
                           request.requestedAt,
                         ).toLocaleDateString()}`,
@@ -614,7 +588,7 @@ function DiscoverPage() {
 
               {loadingNavidrome ? (
                 <div className="flex justify-center py-20">
-                  <Loader className="w-8 h-8 animate-spin text-primary-500" />
+                  <LoadingSpinner size="lg" />
                 </div>
               ) : navidromeRecommendations.length > 0 ? (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">

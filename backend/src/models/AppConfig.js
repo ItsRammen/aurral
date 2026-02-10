@@ -56,6 +56,11 @@ const AppConfig = sequelize.define('AppConfig', {
         defaultValue: 24
     },
 
+    proxyTrusted: {
+        type: DataTypes.BOOLEAN,
+        defaultValue: false
+    },
+
     // OIDC Configuration
     oidcEnabled: {
         type: DataTypes.BOOLEAN,

@@ -27,7 +27,7 @@ const getGlobalNavidromeConfig = async () => {
 // --- Configuration Endpoints ---
 
 // POST /api/navidrome/config - Configure Navidrome integration
-router.post("/config", async (req, res) => {
+router.post("/config", async (req, res, next) => {
     const { url, username, password } = req.body;
 
     if (!url || !username || !password) {
@@ -53,63 +53,75 @@ router.post("/config", async (req, res) => {
 
         const subRes = response.data['subsonic-response'];
         if (!subRes || subRes.status !== 'ok') {
-            return res.status(400).json({
-                error: "Navidrome connection failed: " + (subRes?.error?.message || "Invalid response from server")
-            });
+            const err = new Error("Navidrome connection failed: " + (subRes?.error?.message || "Invalid response from server"));
+            err.status = 400;
+            throw err;
         }
     } catch (e) {
-        return res.status(400).json({ error: "Navidrome connection failed: " + e.message });
+        if (!e.status) {
+            e.message = "Navidrome connection failed: " + e.message;
+            e.status = 400;
+        }
+        return next(e);
     }
 
     try {
         await req.user.update({ navidromeConfig });
         res.json({ success: true, config: { url: cleanUrl, username } });
     } catch (error) {
-        res.status(500).json({ error: "Failed to save configuration" });
+        next(error);
     }
 });
 
 // GET /api/navidrome/status - Check connection status
-router.get("/status", async (req, res) => {
-    // Check current user or global fallback
-    let config = req.user.navidromeConfig;
-    if (!config) {
-        config = await getGlobalNavidromeConfig();
-    }
+router.get("/status", async (req, res, next) => {
+    try {
+        // Check current user or global fallback
+        let config = req.user.navidromeConfig;
+        if (!config) {
+            config = await getGlobalNavidromeConfig();
+        }
 
-    if (!config) {
-        return res.json({ connected: false });
+        if (!config) {
+            return res.json({ connected: false });
+        }
+        res.json({
+            connected: true,
+            url: config.url,
+            username: config.username
+        });
+    } catch (error) {
+        next(error);
     }
-    res.json({
-        connected: true,
-        url: config.url,
-        username: config.username
-    });
 });
 
 // DELETE /api/navidrome/config - Remove configuration
-router.delete("/config", async (req, res) => {
-    await req.user.update({ navidromeConfig: null });
-    res.json({ success: true });
+router.delete("/config", async (req, res, next) => {
+    try {
+        await req.user.update({ navidromeConfig: null });
+        res.json({ success: true });
+    } catch (error) {
+        next(error);
+    }
 });
 
 // --- User Account Linking ---
 
 // POST /api/navidrome/verify-user - Link personal account
-router.post("/verify-user", async (req, res) => {
+router.post("/verify-user", async (req, res, next) => {
     const { username, password } = req.body;
 
-    const globalConfig = (await getGlobalNavidromeConfig()) || req.user.navidromeConfig;
-
-    if (!globalConfig) {
-        return res.status(400).json({ error: "Navidrome not configured. Please set up Navidrome in Settings first." });
-    }
-
-    if (!username || !password) {
-        return res.status(400).json({ error: "Username and password are required" });
-    }
-
     try {
+        const globalConfig = (await getGlobalNavidromeConfig()) || req.user.navidromeConfig;
+
+        if (!globalConfig) {
+            return res.status(400).json({ error: "Navidrome not configured. Please set up Navidrome in Settings first." });
+        }
+
+        if (!username || !password) {
+            return res.status(400).json({ error: "Username and password are required" });
+        }
+
         // Generate token for the user's credentials
         const salt = crypto.randomBytes(6).toString('hex');
         const token = crypto.createHash('md5').update(password + salt).digest('hex');
@@ -120,7 +132,9 @@ router.post("/verify-user", async (req, res) => {
         const subRes = response.data['subsonic-response'];
 
         if (!subRes || subRes.status !== 'ok') {
-            return res.status(401).json({ error: "Invalid Navidrome credentials" });
+            const err = new Error("Invalid Navidrome credentials");
+            err.status = 401;
+            throw err;
         }
 
         // Save the user's personal Navidrome username (verified)
@@ -133,22 +147,28 @@ router.post("/verify-user", async (req, res) => {
         res.json({ success: true, username });
     } catch (e) {
         console.error("Navidrome verify-user error:", e.message);
-        return res.status(400).json({ error: "Failed to verify Navidrome credentials: " + e.message });
+        if (!e.status) e.status = 400; // Default to 400 for verify errors if not 401
+        if (e.status === 400 && !e.message.startsWith("Navidrome")) e.message = "Failed to verify Navidrome credentials: " + e.message;
+        next(e);
     }
 });
 
 // DELETE /api/navidrome/user-link - Unlink personal account
-router.delete("/user-link", async (req, res) => {
-    await req.user.update({
-        navidromeUsername: null,
-        navidromeToken: null,
-        navidromeUserSalt: null
-    });
-    res.json({ success: true });
+router.delete("/user-link", async (req, res, next) => {
+    try {
+        await req.user.update({
+            navidromeUsername: null,
+            navidromeToken: null,
+            navidromeUserSalt: null
+        });
+        res.json({ success: true });
+    } catch (error) {
+        next(error);
+    }
 });
 
 // GET /api/navidrome/user-history - Get listening history
-router.get("/user-history", async (req, res) => {
+router.get("/user-history", async (req, res, next) => {
     try {
         const history = await db.Play.findAll({
             where: { userId: req.user.id },
@@ -158,28 +178,28 @@ router.get("/user-history", async (req, res) => {
 
         res.json(history);
     } catch (error) {
-        console.error("History error:", error);
-        res.status(500).json({ error: "Failed to fetch history" });
+        next(error);
     }
 });
 
 // --- Search & Playback ---
 
 // GET /api/navidrome/search-play - Search for a track to play
-router.get("/search-play", async (req, res) => {
+router.get("/search-play", async (req, res, next) => {
     const { artist, track } = req.query;
-    let config = req.user.navidromeConfig;
-    if (!config) config = await getGlobalNavidromeConfig();
-
-    if (!config) {
-        return res.status(400).json({ error: "Navidrome not configured" });
-    }
-
-    if (!artist || !track) {
-        return res.status(400).json({ error: "Artist and track are required" });
-    }
 
     try {
+        let config = req.user.navidromeConfig;
+        if (!config) config = await getGlobalNavidromeConfig();
+
+        if (!config) {
+            return res.status(400).json({ error: "Navidrome not configured" });
+        }
+
+        if (!artist || !track) {
+            return res.status(400).json({ error: "Artist and track are required" });
+        }
+
         // Search for the track
         const query = `${artist} ${track}`;
         const searchUrl = `${config.url}/rest/search3.view?u=${config.username}&t=${config.token}&s=${config.salt}&v=1.16.1&c=Aurral&f=json&query=${encodeURIComponent(query)}`;
@@ -189,13 +209,17 @@ router.get("/search-play", async (req, res) => {
 
         if (subRes?.status !== 'ok') {
             console.error("Navidrome Search Error:", subRes?.error);
-            return res.status(400).json({ error: subRes?.error?.message || "Navidrome search failed" });
+            const err = new Error(subRes?.error?.message || "Navidrome search failed");
+            err.status = 400;
+            throw err;
         }
 
         const songs = subRes.searchResult3?.song || [];
 
         if (songs.length === 0) {
-            return res.status(404).json({ error: "Track not found on Navidrome" });
+            const err = new Error("Track not found on Navidrome");
+            err.status = 404;
+            throw err;
         }
 
         // Try to find exact match or just use the first result
@@ -221,21 +245,22 @@ router.get("/search-play", async (req, res) => {
         });
     } catch (e) {
         console.error("Navidrome Search Exception:", e.message);
-        res.status(500).json({ error: "Failed to search Navidrome: " + e.message });
+        next(e);
     }
 });
 
 // GET /api/navidrome/stream/:trackId - Audio Stream Proxy
-router.get("/stream/:trackId", async (req, res) => {
+router.get("/stream/:trackId", async (req, res, next) => {
     const { trackId } = req.params;
-    let config = req.user.navidromeConfig;
-    if (!config) config = await getGlobalNavidromeConfig();
-
-    if (!config) {
-        return res.status(400).json({ error: "Navidrome not configured" });
-    }
 
     try {
+        let config = req.user.navidromeConfig;
+        if (!config) config = await getGlobalNavidromeConfig();
+
+        if (!config) {
+            return res.status(400).json({ error: "Navidrome not configured" });
+        }
+
         const streamUrl = `${config.url}/rest/stream.view?u=${config.username}&t=${config.token}&s=${config.salt}&v=1.16.1&c=Aurral&id=${trackId}`;
 
         const response = await axios({
@@ -255,27 +280,30 @@ router.get("/stream/:trackId", async (req, res) => {
         response.data.pipe(res);
     } catch (e) {
         console.error("Navidrome Stream Error:", e.message);
-        res.status(500).json({ error: "Failed to stream from Navidrome" });
+        next(e);
     }
 });
 
 // GET /api/navidrome/track/:trackId - Track Info
-router.get("/track/:trackId", async (req, res) => {
+router.get("/track/:trackId", async (req, res, next) => {
     const { trackId } = req.params;
-    let config = req.user.navidromeConfig;
-    if (!config) config = await getGlobalNavidromeConfig();
-
-    if (!config) {
-        return res.status(400).json({ error: "Navidrome not configured" });
-    }
 
     try {
+        let config = req.user.navidromeConfig;
+        if (!config) config = await getGlobalNavidromeConfig();
+
+        if (!config) {
+            return res.status(400).json({ error: "Navidrome not configured" });
+        }
+
         const songUrl = `${config.url}/rest/getSong.view?u=${config.username}&t=${config.token}&s=${config.salt}&v=1.16.1&c=Aurral&f=json&id=${trackId}`;
         const response = await axios.get(songUrl, { timeout: 10000 });
         const subRes = response.data['subsonic-response'];
 
         if (subRes?.status !== 'ok' || !subRes.song) {
-            return res.status(404).json({ error: "Track not found" });
+            const err = new Error("Track not found");
+            err.status = 404;
+            throw err;
         }
 
         const song = subRes.song;
@@ -292,21 +320,22 @@ router.get("/track/:trackId", async (req, res) => {
         });
     } catch (e) {
         console.error("Navidrome Track Info Error:", e.message);
-        res.status(500).json({ error: "Failed to get track info" });
+        next(e);
     }
 });
 
 // GET /api/navidrome/cover/:coverId - Cover Art Proxy
-router.get("/cover/:coverId", async (req, res) => {
+router.get("/cover/:coverId", async (req, res, next) => {
     const { coverId } = req.params;
-    let config = req.user.navidromeConfig;
-    if (!config) config = await getGlobalNavidromeConfig();
-
-    if (!config) {
-        return res.status(400).json({ error: "Navidrome not configured" });
-    }
 
     try {
+        let config = req.user.navidromeConfig;
+        if (!config) config = await getGlobalNavidromeConfig();
+
+        if (!config) {
+            return res.status(400).json({ error: "Navidrome not configured" });
+        }
+
         const coverUrl = `${config.url}/rest/getCoverArt.view?u=${config.username}&t=${config.token}&s=${config.salt}&v=1.16.1&c=Aurral&id=${coverId}&size=300`;
 
         const response = await axios({
@@ -322,7 +351,9 @@ router.get("/cover/:coverId", async (req, res) => {
 
         response.data.pipe(res);
     } catch (e) {
-        console.error("Navidrome Cover Error:", e.message);
+        // console.error("Navidrome Cover Error:", e.message);
+        // next(e); 
+        // Covers often fail, maybe return 404 directly?
         res.status(404).send();
     }
 });

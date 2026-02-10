@@ -6,6 +6,8 @@ import ImageCache from '../models/ImageCache.js';
 import Like from '../models/Like.js';
 import Play from '../models/Play.js';
 import MetadataCache from '../models/MetadataCache.js';
+import DownloadProgress from '../models/DownloadProgress.js';
+import Issue from '../models/Issue.js';
 
 // Legacy LowDB export replacement
 // We export the models so other files can import `db` and access `db.User`, etc.
@@ -21,6 +23,8 @@ const db = {
     Like,
     Play,
     MetadataCache,
+    DownloadProgress,
+    Issue,
 };
 
 // Start the connection
@@ -28,3 +32,4 @@ await connectDB();
 
 export { db };
 export const DATA_DIR = "../data"; // approximate
+

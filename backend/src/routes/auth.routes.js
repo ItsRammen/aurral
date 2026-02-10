@@ -11,15 +11,19 @@ import { loadSettings } from "../services/api.js";
 const router = express.Router();
 
 // Public: Get Auth Config (OIDC Status)
-router.get("/config", async (req, res) => {
-    const settings = await loadSettings();
-    res.json({
-        oidcEnabled: !!settings.oidcEnabled
-    });
+router.get("/config", async (req, res, next) => {
+    try {
+        const settings = await loadSettings();
+        res.json({
+            oidcEnabled: !!settings.oidcEnabled
+        });
+    } catch (error) {
+        next(error);
+    }
 });
 
 // Login
-router.post("/login", async (req, res) => {
+router.post("/login", async (req, res, next) => {
     const { username, password } = req.body;
 
     try {
@@ -49,13 +53,12 @@ router.post("/login", async (req, res) => {
             }
         });
     } catch (error) {
-        console.error("Login Error:", error);
-        res.status(500).json({ error: "Login failed" });
+        next(error);
     }
 });
 
 // Initial Setup
-router.post("/init", async (req, res) => {
+router.post("/init", async (req, res, next) => {
     try {
         const userCount = await db.User.count();
         if (userCount > 0) {
@@ -95,94 +98,96 @@ router.post("/init", async (req, res) => {
             }
         });
     } catch (error) {
-        console.error("Init Error:", error);
-        res.status(500).json({ error: "Setup failed" });
+        next(error);
     }
 });
 
 // OIDC Login Initiation
 router.get('/oidc', async (req, res, next) => {
-    const settings = await loadSettings();
-    if (!settings.oidcEnabled) {
-        return res.status(400).send("OIDC is not enabled");
+    try {
+        const settings = await loadSettings();
+        if (!settings.oidcEnabled) {
+            return res.status(400).send("OIDC is not enabled");
+        }
+        await configurePassport();
+        passport.authenticate('oidc')(req, res, next);
+    } catch (error) {
+        next(error);
     }
-    // Re-configure in case settings changed
-    // configurePassport needs to be async or handle settings loading internally?
-    // Checking configurePassport implementation next, assuming it reads from DB or we pass settings.
-    // For now assuming existing behavior but triggered.
-    configurePassport();
-    passport.authenticate('oidc')(req, res, next);
 });
 
 // OIDC Callback
-// OIDC Callback
 router.get('/oidc/callback', (req, res, next) => {
     passport.authenticate('oidc', async (err, user, info) => {
-        const settings = await loadSettings();
-        const frontendUrl = settings.appUrl || process.env.APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
-        // Remove trailing slash
-        const cleanFrontendUrl = frontendUrl.replace(/\/$/, '');
+        try {
+            const settings = await loadSettings();
+            const frontendUrl = settings.appUrl || process.env.APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
+            const cleanFrontendUrl = frontendUrl.replace(/\/$/, '');
 
-        if (err) {
-            console.error("OIDC Authentication Error:", err);
-            return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(err.message || 'oidc_error')}`);
-        }
-        if (!user) {
-            console.error("OIDC Authentication Failed (No User):", info);
-            const errorMsg = info?.message || 'oidc_failed';
-            return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(errorMsg)}`);
-        }
-
-        // Successful authentication
-        req.logIn(user, (err) => {
             if (err) {
-                console.error("Req.logIn failed:", err);
-                return res.redirect(`${cleanFrontendUrl}/login?error=login_session_failed`);
+                console.error("OIDC Authentication Error:", err);
+                return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(err.message || 'oidc_error')}`);
+            }
+            if (!user) {
+                console.error("OIDC Authentication Failed (No User):", info);
+                const errorMsg = info?.message || 'oidc_failed';
+                return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(errorMsg)}`);
             }
 
-            const token = jwt.sign(
-                { id: user.id, username: user.username, email: user.email, permissions: user.permissions },
-                JWT_SECRET,
-                { expiresIn: "7d" }
-            );
+            req.logIn(user, (err) => {
+                if (err) {
+                    console.error("Req.logIn failed:", err);
+                    return res.redirect(`${cleanFrontendUrl}/login?error=login_session_failed`);
+                }
 
-            res.redirect(`${cleanFrontendUrl}/login?token=${token}`);
-        });
+                const token = jwt.sign(
+                    { id: user.id, username: user.username, email: user.email, permissions: user.permissions },
+                    JWT_SECRET,
+                    { expiresIn: "7d" }
+                );
+
+                res.redirect(`${cleanFrontendUrl}/login?token=${token}`);
+            });
+        } catch (error) {
+            next(error);
+        }
     })(req, res, next);
 });
 
 // Get Current User (Me)
-router.get("/me", async (req, res) => {
-    if (!req.user) {
-        return res.status(401).json({ error: "Not authenticated" });
+router.get("/me", async (req, res, next) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        const userWithoutPass = req.user.toJSON();
+        delete userWithoutPass.password;
+
+        if (
+            userWithoutPass.permissions &&
+            userWithoutPass.permissions.includes("admin")
+        ) {
+            const settings = await loadSettings();
+            userWithoutPass.lidarrUrl = settings.lidarrUrl;
+            userWithoutPass.lidarrApiKey = settings.lidarrApiKey;
+        }
+
+        res.json(userWithoutPass);
+    } catch (error) {
+        next(error);
     }
-
-    // req.user is a Sequelize instance
-    const userWithoutPass = req.user.toJSON();
-    delete userWithoutPass.password;
-
-    // Securely inject Lidarr configuration for admin users only
-    if (
-        userWithoutPass.permissions &&
-        userWithoutPass.permissions.includes("admin")
-    ) {
-        const settings = await loadSettings();
-        userWithoutPass.lidarrUrl = settings.lidarrUrl;
-        userWithoutPass.lidarrApiKey = settings.lidarrApiKey;
-    }
-
-    res.json(userWithoutPass);
 });
 
 // Update Profile
-router.put("/profile", async (req, res) => {
-    if (!req.user) {
-        return res.status(401).json({ error: "Not authenticated" });
-    }
-
-    const { email, password } = req.body;
-
+router.put("/profile", async (req, res, next) => {
     try {
+        if (!req.user) {
+            return res.status(401).json({ error: "Not authenticated" });
+        }
+
+        const { email, password } = req.body;
+
         const updates = {};
         if (email !== undefined) updates.email = email;
         if (password) {
@@ -196,8 +201,7 @@ router.put("/profile", async (req, res) => {
 
         res.json(userWithoutPass);
     } catch (error) {
-        console.error("Profile Update Error:", error);
-        res.status(500).json({ error: "Failed to update profile" });
+        next(error);
     }
 });
 

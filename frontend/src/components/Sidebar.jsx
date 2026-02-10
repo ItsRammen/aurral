@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
 import {
   Library,
   Settings,
@@ -11,10 +12,12 @@ import {
   History,
   LogOut,
   User,
+  AlertTriangle,
 } from "lucide-react";
 import { useTheme } from "../contexts/ThemeContext";
 import { useAuth } from "../contexts/AuthContext";
 import ProfileDropdown from "./ProfileDropdown";
+import api from "../utils/api";
 
 function Sidebar({
   isHealthy,
@@ -25,7 +28,23 @@ function Sidebar({
 }) {
   const location = useLocation();
   const { theme, toggleTheme } = useTheme();
-  const { hasPermission, logout, isAuthenticated } = useAuth(); // Assuming authRequired was replaced or is handled by isAuthenticated
+  const { user, logout, hasPermission } = useAuth();
+  const [issueCount, setIssueCount] = useState(0);
+
+  // Fetch open issue count
+  useEffect(() => {
+    const fetchIssueCount = async () => {
+      try {
+        const response = await api.get("/issues?status=open&limit=1");
+        setIssueCount(response.data.counts?.open || 0);
+      } catch (err) {
+        // Silently fail - issues badge is optional
+      }
+    };
+    fetchIssueCount();
+    const interval = setInterval(fetchIssueCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   const isActive = (path) => {
     if (path === "/discover" && location.pathname === "/") return true;
@@ -36,6 +55,7 @@ function Sidebar({
     { path: "/discover", label: "Discover", icon: Sparkles },
     { path: "/library", label: "Library", icon: Library },
     { path: "/requests", label: "Requests", icon: History },
+    { path: "/issues", label: "Issues", icon: AlertTriangle, badge: issueCount },
   ];
 
   if (hasPermission('admin')) {
@@ -96,7 +116,12 @@ function Sidebar({
                     : "text-gray-500 dark:text-gray-400 group-hover:text-gray-900 dark:group-hover:text-gray-100"
                     }`}
                 />
-                <span>{item.label}</span>
+                <span className="flex-1">{item.label}</span>
+                {item.badge > 0 && (
+                  <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-red-500 text-white text-xs font-bold flex items-center justify-center">
+                    {item.badge > 99 ? "99+" : item.badge}
+                  </span>
+                )}
               </Link>
             );
           })}

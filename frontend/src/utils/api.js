@@ -42,6 +42,11 @@ export const checkHealth = async () => {
   return response.data;
 };
 
+export const getSystemStats = async () => {
+  const response = await api.get("/settings/system/stats");
+  return response.data;
+};
+
 export const getAuthConfig = async () => {
   const response = await api.get("/auth/config");
   return response.data;
@@ -61,15 +66,26 @@ export const searchRecordings = async (query, limit = 10) => {
   return response.data;
 };
 
+export const searchAlbums = async (query, limit = 10) => {
+  const response = await api.get("/search/albums", {
+    params: { query, limit },
+  });
+  return response.data;
+};
+
+export const searchSuggestions = async (query, limit = 5) => {
+  const response = await api.get("/search/suggest", {
+    params: { q: query, limit },
+  });
+  return response.data;
+};
+
 export const getArtistDetails = async (mbid) => {
   const response = await api.get(`/artists/${mbid}`);
   return response.data;
 };
 
-export const getArtistCover = async (mbid) => {
-  const response = await api.get(`/artists/${mbid}/cover`);
-  return response.data;
-};
+
 
 export const getSimilarArtistsForArtist = async (mbid, limit = 20) => {
   const response = await api.get(`/artists/${mbid}/similar`, {
@@ -257,22 +273,6 @@ export const searchArtistsByTag = async (tag, limit = 20) => {
   return response.data;
 };
 
-export const verifyCredentials = async (password, username = "admin") => {
-  const token = btoa(`${username}:${password}`);
-  try {
-    await api.get("/settings", {
-      headers: {
-        Authorization: `Basic ${token}`,
-      },
-    });
-    return true;
-  } catch (error) {
-    if (error.response && error.response.status === 401) {
-      return false;
-    }
-    throw error;
-  }
-};
 
 export const getAppSettings = async () => {
   const response = await api.get("/settings");
@@ -331,6 +331,11 @@ export const runNavidromeJob = async () => {
   return response.data;
 };
 
+export const testOidcConnection = async (issuerUrl) => {
+  const response = await api.post("/settings/test-oidc", { issuerUrl });
+  return response.data;
+};
+
 export const getJobStatus = async () => {
   const response = await api.get("/jobs/status");
   return response.data;
@@ -343,6 +348,16 @@ export const getNavidromeRecommendations = async () => {
 
 export const testLidarrConnection = async (config) => {
   const response = await api.post("/settings/test-lidarr", config);
+  return response.data;
+};
+
+export const testLastfmConnection = async (apiKey) => {
+  const response = await api.post("/settings/test-lastfm", { lastfmApiKey: apiKey });
+  return response.data;
+};
+
+export const triggerDiscoveryRefresh = async () => {
+  const response = await api.post("/jobs/refresh-discovery");
   return response.data;
 };
 

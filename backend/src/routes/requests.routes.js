@@ -12,30 +12,52 @@ const router = express.Router();
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GET /api/requests
-router.get("/", async (req, res) => {
+router.get("/", async (req, res, next) => {
     try {
-        const requests = await db.Request.findAll();
-        let lidarrArtists = [];
-        try {
-            lidarrArtists = await getCachedLidarrArtists();
-        } catch (e) {
-            console.error("Failed to fetch Lidarr artists for requests sync", e);
-        }
+        const [requests, lidarrArtists, activeDownloads, openIssues] = await Promise.all([
+            db.Request.findAll(),
+            getCachedLidarrArtists().catch(e => {
+                console.error("Failed to fetch Lidarr artists", e);
+                return [];
+            }),
+            db.DownloadProgress.findAll(),
+            db.Issue.findAll({ where: { status: 'open' } })
+        ]);
 
         const updatedRequests = await Promise.all(requests.map(async (req) => {
             const lidarrArtist = lidarrArtists.find(
                 (a) => a.foreignArtistId === req.mbid,
             );
             let newStatus = req.status;
-            let lidarrId = req.foreignArtistId; // Model uses foreignArtistId, alias lidarrId in local var
+            let lidarrId = req.foreignArtistId;
             let statistics = null;
+
+            // Check for issues first (highest priority)
+            const hasIssue = openIssues.some(i =>
+                i.artistMbid === req.mbid || i.artistName === req.artistName
+            );
+
+            // Check for active downloads
+            const isDownloading = activeDownloads.some(d =>
+                d.artistId === lidarrId || d.artistName === req.artistName
+            );
 
             if (lidarrArtist) {
                 lidarrId = lidarrArtist.id;
                 const isAvailable =
                     lidarrArtist.statistics && lidarrArtist.statistics.sizeOnDisk > 0;
-                newStatus = isAvailable ? "available" : "processing";
+
+                if (hasIssue) {
+                    newStatus = "issue";
+                } else if (isDownloading) {
+                    newStatus = "downloading";
+                } else {
+                    newStatus = isAvailable ? "available" : "processing";
+                }
                 statistics = lidarrArtist.statistics;
+            } else if (req.status !== 'pending' && req.status !== 'pending_approval' && req.status !== 'denied') {
+                // If not in Lidarr but was processed, maybe it was deleted?
+                if (hasIssue) newStatus = "issue";
             }
 
             let changed = false;
@@ -48,21 +70,18 @@ router.get("/", async (req, res) => {
                 changed = true;
             }
 
-            // We don't necessarily save statistics to DB unless we added a column for it. 
-            // The frontend might expect it.
-            // If we didn't add statistics column, we just attach it to the response object.
-
             if (changed) {
                 await req.save();
             }
 
-            // Return plain object with statistics attached
             return {
                 ...req.toJSON(),
-                id: req.uniqueId, // Ensure frontend has an ID to work with
-                lidarrId: req.foreignArtistId, // Backward compatibility for frontend
-                requestedAt: req.timestamp, // Fix for frontend "Invalid Date"
-                statistics
+                id: req.uniqueId,
+                lidarrId: req.foreignArtistId,
+                requestedAt: req.timestamp,
+                statistics,
+                hasIssue,
+                isDownloading
             };
         }));
 
@@ -72,30 +91,34 @@ router.get("/", async (req, res) => {
 
         res.json(sortedRequests);
     } catch (error) {
-        console.error("Error in /api/requests:", error);
-        res.status(500).json({ error: "Failed to fetch requests" });
+        next(error);
     }
 });
 
 // DELETE /api/requests/:mbid
-router.delete("/:mbid", requirePermission("request"), async (req, res) => {
+router.delete("/:mbid", requirePermission("request"), async (req, res, next) => {
     const { mbid } = req.params;
 
-    if (!UUID_REGEX.test(mbid)) {
-        // MBID regex check - actually UUID V4 usually.
-        // If mbid is actually just a string like 'artist-mbid' check logic. 
-        // Backend `Request` model defines `mbid` as STRING. `uniqueId` is UUID. 
-        // Route param says :mbid.
-        // If the frontend sends the UUID (the DB primary key), then it's :id.
-        // Let's assume frontend sends MBID (MusicBrainz ID, which is UUID-like).
-    }
-
     try {
-        await db.Request.destroy({ where: { mbid } });
+        const request = await db.Request.findOne({ where: { mbid } });
+
+        if (!request) {
+            return res.status(404).json({ error: "Request not found" });
+        }
+
+        // Security: Only allow deletion by the original requester or admins
+        const isOwner = request.requestedByUserId === req.user.id;
+        const isAdmin = req.user.permissions.includes("admin") ||
+            req.user.permissions.includes("manage_requests");
+
+        if (!isOwner && !isAdmin) {
+            return res.status(403).json({ error: "Cannot delete others' requests" });
+        }
+
+        await request.destroy();
         res.json({ success: true });
     } catch (error) {
-        console.error("Failed to delete request:", error);
-        res.status(500).json({ error: "Failed to delete request" });
+        next(error);
     }
 });
 
@@ -103,7 +126,7 @@ router.delete("/:mbid", requirePermission("request"), async (req, res) => {
 router.post("/:id/approve", (req, res, next) => {
     if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_requests")) return next();
     res.status(403).json({ error: "Forbidden: Insufficient permissions" });
-}, async (req, res) => {
+}, async (req, res, next) => {
     const { id } = req.params;
 
     try {
@@ -117,8 +140,6 @@ router.post("/:id/approve", (req, res, next) => {
         // Standard flow: pending -> approved -> processing
         // or pending -> processing in one step if auto-approved.
         // Here admin manually approves.
-        // Only checking "pending_approval" strictly might block "pending" ones.
-        // The original code checked: request.status !== "pending_approval"
         if (request.status !== "pending_approval" && request.status !== "pending") {
             // Relaxed check to allow re-approving stuck requests or pending ones
         }
@@ -178,8 +199,7 @@ router.post("/:id/approve", (req, res, next) => {
         res.json(request);
 
     } catch (error) {
-        console.error("Approve Error:", error);
-        res.status(500).json({ error: "Failed to approve request", details: error.message });
+        next(error);
     }
 });
 
@@ -187,7 +207,7 @@ router.post("/:id/approve", (req, res, next) => {
 router.post("/:id/deny", (req, res, next) => {
     if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_requests")) return next();
     res.status(403).json({ error: "Forbidden: Insufficient permissions" });
-}, async (req, res) => {
+}, async (req, res, next) => {
     const { id } = req.params;
 
     try {
@@ -203,7 +223,7 @@ router.post("/:id/deny", (req, res, next) => {
 
         res.json(request);
     } catch (error) {
-        res.status(500).json({ error: "Failed to deny request" });
+        next(error);
     }
 });
 

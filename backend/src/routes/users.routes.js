@@ -16,7 +16,7 @@ const ensureUserManagement = (req, res, next) => {
 };
 
 // GET /api/users - List all users (Admin)
-router.get("/", requirePermission("manage_users"), async (req, res) => {
+router.get("/", requirePermission("manage_users"), async (req, res, next) => {
     try {
         const users = await db.User.findAll({
             attributes: { exclude: ['password'] }
@@ -42,13 +42,12 @@ router.get("/", requirePermission("manage_users"), async (req, res) => {
 
         res.json(usersWithCounts);
     } catch (error) {
-        console.error("Error fetching users:", error);
-        res.status(500).json({ error: "Internal Server Error" });
+        next(error);
     }
 });
 
 // POST /api/users - Create User (Admin)
-router.post("/", requirePermission("manage_users"), async (req, res) => {
+router.post("/", requirePermission("manage_users"), async (req, res, next) => {
     const { username, password, email, permissions } = req.body;
 
     try {
@@ -70,13 +69,12 @@ router.post("/", requirePermission("manage_users"), async (req, res) => {
         const { password: _, ...userWithoutPass } = newUser.toJSON();
         res.status(201).json(userWithoutPass);
     } catch (error) {
-        console.error("Error creating user:", error);
-        res.status(500).json({ error: "Failed to create user" });
+        next(error);
     }
 });
 
 // PUT /api/users/:id - Update User (Admin)
-router.put("/:id", requirePermission("manage_users"), async (req, res) => {
+router.put("/:id", requirePermission("manage_users"), async (req, res, next) => {
     const { id } = req.params;
     const { username, password, email, permissions } = req.body;
 
@@ -114,13 +112,12 @@ router.put("/:id", requirePermission("manage_users"), async (req, res) => {
         const { password: _, ...userWithoutPass } = targetUser.toJSON();
         res.json(userWithoutPass);
     } catch (error) {
-        console.error("Error updating user:", error);
-        res.status(500).json({ error: "Failed to update user" });
+        next(error);
     }
 });
 
 // DELETE /api/users/:id - Delete User (Admin)
-router.delete("/:id", requirePermission("manage_users"), async (req, res) => {
+router.delete("/:id", requirePermission("manage_users"), async (req, res, next) => {
     const { id } = req.params;
 
     try {
@@ -142,13 +139,12 @@ router.delete("/:id", requirePermission("manage_users"), async (req, res) => {
         await targetUser.destroy();
         res.json({ success: true });
     } catch (error) {
-        console.error("Error deleting user:", error);
-        res.status(500).json({ error: "Failed to delete user" });
+        next(error);
     }
 });
 
 // GET /api/users/:id/stats - User Profile Stats
-router.get("/:id/stats", async (req, res) => {
+router.get("/:id/stats", async (req, res, next) => {
     const { id } = req.params;
 
     // Allow users to view their own stats or admins to view any
@@ -302,25 +298,24 @@ router.get("/:id/stats", async (req, res) => {
             accountAge: accountAgeDays
         });
     } catch (error) {
-        console.error("Error fetching user stats:", error);
-        res.status(500).json({ error: "Failed to fetch stats" });
+        next(error);
     }
 });
 
 // GET /api/users/:id/avatar
-router.get("/:id/avatar", async (req, res) => {
+router.get("/:id/avatar", async (req, res, next) => {
     const { id } = req.params;
     try {
         const user = await db.User.findByPk(id);
         if (!user) return res.status(404).json({ error: "User not found" });
         res.json({ avatar: user.avatar || null });
     } catch (error) {
-        res.status(500).json({ error: "Failed to fetch avatar" });
+        next(error);
     }
 });
 
 // POST /api/users/:id/avatar
-router.post("/:id/avatar", async (req, res) => {
+router.post("/:id/avatar", async (req, res, next) => {
     const { id } = req.params;
 
     if (req.user.id !== id && !req.user.permissions.includes("admin")) {
@@ -341,13 +336,12 @@ router.post("/:id/avatar", async (req, res) => {
 
         res.json({ success: true, avatar });
     } catch (error) {
-        console.log(error)
-        res.status(500).json({ error: "Failed to update avatar" });
+        next(error);
     }
 });
 
 // DELETE /api/users/:id/avatar
-router.delete("/:id/avatar", async (req, res) => {
+router.delete("/:id/avatar", async (req, res, next) => {
     const { id } = req.params;
 
     if (req.user.id !== id && !req.user.permissions.includes("admin")) {
@@ -363,7 +357,7 @@ router.delete("/:id/avatar", async (req, res) => {
 
         res.json({ success: true });
     } catch (error) {
-        res.status(500).json({ error: "Failed to delete avatar" });
+        next(error);
     }
 });
 

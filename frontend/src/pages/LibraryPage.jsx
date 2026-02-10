@@ -8,7 +8,7 @@ import LibraryControls from "../components/library/LibraryControls";
 import ArtistGrid from "../components/library/ArtistGrid";
 import LibraryStats from "../components/library/LibraryStats";
 import EmptyState from "../components/library/EmptyState";
-import { Loader } from "lucide-react";
+import LoadingSpinner from "../components/LoadingSpinner";
 
 function LibraryPage() {
   const [artists, setArtists] = useState([]);
@@ -49,19 +49,19 @@ function LibraryPage() {
 
   // Helper to standardize artist object for toggleLikeArtist
   const getArtistImage = (artist) => {
-    if (artist.images && artist.images.length > 0) {
+    // Use local proxy if we have an MBID (foreignArtistId in Lidarr)
+    if (artist.foreignArtistId) {
+      return `/api/artists/${artist.foreignArtistId}/image`;
+    }
+    // Fallback to Lidarr mediacover
+    if (artist.images && artist.images.length > 0 && artist.id) {
       const posterImage = artist.images.find(
         (img) => img.coverType === "poster" || img.coverType === "fanart",
       );
       const image = posterImage || artist.images[0];
-
-      if (image && artist.id) {
-        const coverType = image.coverType || "poster";
-        const filename = `${coverType}.jpg`;
-        return `/api/lidarr/mediacover/${artist.id}/${filename}`;
-      }
-
-      return image?.remoteUrl || image?.url || null;
+      const coverType = image.coverType || "poster";
+      const filename = `${coverType}.jpg`;
+      return `/api/lidarr/mediacover/${artist.id}/${filename}`;
     }
     return null;
   };
@@ -185,8 +185,7 @@ function LibraryPage() {
 
           {loading ? (
             <div className="flex flex-col justify-center items-center py-32">
-              <Loader className="w-12 h-12 text-primary-600 animate-spin mb-4" />
-              <p className="text-gray-500 font-bold">Loading your library...</p>
+              <LoadingSpinner size="xl" text="Loading your library..." />
             </div>
           ) : error ? (
             <EmptyState

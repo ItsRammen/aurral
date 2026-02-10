@@ -1,22 +1,23 @@
 import React from 'react';
-import { Settings, Shield, Music, Box, Activity } from 'lucide-react';
+import { Settings, Shield, Music, Activity, CheckCircle } from 'lucide-react';
 
-export default function SettingsTabs({ activeTab, setActiveTab }) {
+export default function SettingsTabs({ activeTab, setActiveTab, connectionStatus = {} }) {
     const tabs = [
         { id: 'general', label: 'General', icon: Settings },
-        { id: 'music', label: 'Music Services', icon: Music },
-        { id: 'auth', label: 'Authentication', icon: Shield },
-        // { id: 'services', label: 'Services', icon: Box }, // Merged into Music/Integrations or kept if needed. Let's merge Lidarr into Music (Integrations).
-        // Actually, current page distinguished Music (Lidarr? Navidrome?) from Services?
-        // Let's stick to the plan: IntegrationsTab handles Lidarr/Navidrome/LastFM.
-        // So we call it "Integrations" or "Music Services".
-        // Let's call it "Integrations".
+        {
+            id: 'music',
+            label: 'Integrations',
+            icon: Music,
+            hasStatus: true,
+            isConnected: connectionStatus.lidarr || connectionStatus.navidrome || connectionStatus.lastfm
+        },
+        { id: 'auth', label: 'Security', icon: Shield },
         { id: 'system', label: 'System', icon: Activity }
     ];
 
     return (
         <div className="flex overflow-x-auto no-scrollbar pb-2 mb-6 -mx-4 px-4 sm:mx-0 sm:px-0">
-            <div className="flex bg-gray-100 dark:bg-gray-900/50 p-1 rounded-xl">
+            <div className="flex bg-gray-100 dark:bg-gray-900/50 p-1 rounded-xl gap-1">
                 {tabs.map(tab => (
                     <button
                         key={tab.id}
@@ -28,6 +29,9 @@ export default function SettingsTabs({ activeTab, setActiveTab }) {
                     >
                         <tab.icon className="w-4 h-4" />
                         {tab.label}
+                        {tab.hasStatus && tab.isConnected && (
+                            <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="Services connected" />
+                        )}
                     </button>
                 ))}
             </div>

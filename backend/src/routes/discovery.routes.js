@@ -14,6 +14,7 @@ import {
     lidarrRequest,
     LASTFM_API_KEY
 } from "../services/api.js";
+import { requirePermission } from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -38,7 +39,7 @@ router.get("/discover/personal", async (req, res) => {
         // Generate on demand if cache missing or old? 
         // For now, we rely on the scheduler/cache, but this function 'generatePersonalDiscovery' 
         // reads from cache OR generates if missing.
-        const personal = await generatePersonalDiscovery(req.user.id, req.user.lastfmApiKey, parseInt(limit));
+        const personal = await generatePersonalDiscovery(req.user.id, null, parseInt(limit));
         res.json(personal);
     } catch (error) {
         console.error("Personal discovery error:", error);
@@ -46,8 +47,8 @@ router.get("/discover/personal", async (req, res) => {
     }
 });
 
-// POST /api/discover/refresh - Trigger global update
-router.post("/discover/refresh", (req, res) => {
+// POST /api/discover/refresh - Trigger global update (Admin only)
+router.post("/discover/refresh", requirePermission("admin"), (req, res) => {
     if (discoveryCache.isUpdating) {
         return res.status(409).json({
             message: "Discovery update already in progress",
@@ -61,8 +62,8 @@ router.post("/discover/refresh", (req, res) => {
     });
 });
 
-// POST /api/discover/personal/refresh - Trigger personal update
-router.post("/discover/personal/refresh", (req, res) => {
+// POST /api/discover/personal/refresh - Trigger personal update (Admin only)
+router.post("/discover/personal/refresh", requirePermission("admin"), (req, res) => {
     if (isPersonalUpdating) {
         return res.status(409).json({
             message: "Personal discovery update already in progress",
@@ -76,8 +77,8 @@ router.post("/discover/personal/refresh", (req, res) => {
     });
 });
 
-// POST /api/discover/clear - Clear cache
-router.post("/discover/clear", async (req, res) => {
+// POST /api/discover/clear - Clear cache (Admin only)
+router.post("/discover/clear", requirePermission("admin"), async (req, res) => {
     try {
         await db.AppConfig.update({
             discoveryData: {
@@ -112,24 +113,12 @@ router.post("/discover/clear", async (req, res) => {
     }
 });
 
-// GET /api/discover/related - Get related artists
-router.get("/discover/related", async (req, res) => {
-    // Placeholder or moved from legacy if it existed.
-    // api.js calls it. Logic likely implementation left for future or generic.
-    // For now, return empty to prevent 404 if used.
-    res.json({ artists: [] });
-});
-
-// GET /api/discover/similar - Get similar artists
-router.get("/discover/similar", async (req, res) => {
-    res.json({ artists: [] });
-});
 
 // GET /api/dashboard - Dashboard aggregator
 router.get("/dashboard", async (req, res) => {
     try {
         const userId = req.user.id;
-        const userApiKey = req.user.lastfmApiKey;
+        // User-level API keys not implemented - use global key
 
         const [discovery, personal, requests, recentlyAdded, likedMBIDs] = await Promise.all([
             // Global Discovery (Cached)
@@ -144,7 +133,7 @@ router.get("/dashboard", async (req, res) => {
                 isUpdating: discoveryCache.isUpdating,
             }),
             // Personal discovery (Cached per user)
-            generatePersonalDiscovery(userId, userApiKey, 20),
+            generatePersonalDiscovery(userId, null, 20),
             // Requests synced with Lidarr
             (async () => {
                 const reqs = await db.Request.findAll();
@@ -250,7 +239,7 @@ router.get("/discover/by-tag", async (req, res) => {
                 const data = await lastfmRequest("tag.getTopArtists", {
                     tag,
                     limit: Math.min(parseInt(limit) * 2, 50),
-                }, req.user?.lastfmApiKey);
+                });
 
                 if (data?.topartists?.artist) {
                     const artists = Array.isArray(data.topartists.artist)
@@ -333,7 +322,7 @@ router.get("/discover/by-tag", async (req, res) => {
 // GET /api/recommendations/navidrome
 router.get("/recommendations/navidrome", async (req, res) => {
     try {
-        const personal = await generatePersonalDiscovery(req.user.id, req.user.lastfmApiKey);
+        const personal = await generatePersonalDiscovery(req.user.id, null);
         res.json(personal.recommendations || []);
     } catch (error) {
         console.error("Navidrome recommendations error:", error);

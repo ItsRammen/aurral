@@ -13,6 +13,14 @@ const ImageCache = sequelize.define('ImageCache', {
     data: {
         type: DataTypes.JSON, // Full image array if needed
         allowNull: true
+    },
+    localPath: {
+        type: DataTypes.STRING,
+        allowNull: true
+    },
+    cachedAt: {
+        type: DataTypes.DATE,
+        allowNull: true
     }
 });
 

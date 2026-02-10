@@ -25,6 +25,7 @@ const UsersPage = lazy(() => import("./pages/UsersPage"));
 const SetupPage = lazy(() => import("./pages/SetupPage"));
 const Login = lazy(() => import("./pages/Login"));
 const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+const IssuesPage = lazy(() => import("./pages/IssuesPage"));
 
 const ProtectedRoute = ({ children }) => {
   const { isAuthenticated, isLoading, needsSetup } = useAuth(); // needsSetup logic needs to be robust
@@ -164,6 +165,14 @@ function AppContent() {
             <ProtectedRoute>
               <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
                 <ProfilePage />
+              </Layout>
+            </ProtectedRoute>
+          } />
+
+          <Route path="/issues" element={
+            <ProtectedRoute>
+              <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
+                <IssuesPage />
               </Layout>
             </ProtectedRoute>
           } />

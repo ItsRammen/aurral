@@ -1,6 +1,5 @@
 import express from "express";
 import { authMiddleware, requirePermission, JWT_SECRET } from "./src/middleware/auth.js";
-import basicAuth from "express-basic-auth";
 import cors from "cors";
 import dotenv from "dotenv";
 import rateLimit from "express-rate-limit";
@@ -53,7 +52,7 @@ import { getArtistImage } from "./src/services/images.js";
 
 
 app.use(cors());
-app.set('trust proxy', 1); // Trust first proxy (Cloudflare/Nginx/Unraid)
+// Trust Proxy will be set based on settings
 app.use(helmet({
   contentSecurityPolicy: false,
 }));
@@ -64,7 +63,10 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'aurral_secret_session_key',
   resave: false,
   saveUninitialized: true,
-  cookie: { secure: false } // Set to true if using HTTPS
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true
+  }
 }));
 
 app.use(passport.initialize());
@@ -102,6 +104,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/users", usersRoutes);
 
 import jobsRoutes from "./src/routes/jobs.routes.js";
+import issuesRoutes from "./src/routes/issues.routes.js";
 
 // ... existing code ...
 
@@ -113,6 +116,7 @@ app.use("/api/", limiter);
 
 app.use("/api/settings", settingsRoutes);
 app.use("/api/jobs", jobsRoutes);
+app.use("/api/issues", issuesRoutes);
 app.use("/api/navidrome", navidromeRoutes);
 app.use("/api/lidarr", lidarrRoutes);
 app.use("/api", discoveryRoutes);
@@ -140,6 +144,15 @@ app.get("/api/health", async (req, res) => {
   const userCount = await db.User.count();
   const imageCount = await db.ImageCache.count();
 
+  // Check for insecure default secrets
+  const securityWarnings = [];
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === "your-secret-key-change-this") {
+    securityWarnings.push("JWT_SECRET is using an insecure default value");
+  }
+  if (!process.env.SESSION_SECRET || process.env.SESSION_SECRET === "aurral_secret_session_key") {
+    securityWarnings.push("SESSION_SECRET is using an insecure default value");
+  }
+
   try {
     if (settings.lidarrApiKey) {
       // Small optimization: If we already have cached artists, maybe assume connected? 
@@ -157,9 +170,7 @@ app.get("/api/health", async (req, res) => {
     status: "ok",
     lidarrConfigured: !!settings.lidarrApiKey,
     lidarrStatus,
-    lidarrBasepathDetected: false, // Deprecated/Handled in service
     lastfmConfigured: !!settings.lastfmApiKey,
-    // contactEmail: Removed for security
     discovery: {
       lastUpdated: discoveryCache?.lastUpdated || null,
       isUpdating: !!discoveryCache?.isUpdating,
@@ -170,6 +181,7 @@ app.get("/api/health", async (req, res) => {
     },
     authRequired: userCount > 0,
     needsSetup: userCount === 0,
+    securityWarnings,
     timestamp: new Date().toISOString(),
   });
 });
@@ -196,9 +208,23 @@ app.get("/api/health", async (req, res) => {
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   const settings = await loadSettings();
+
+  // Apply Trust Proxy setting
+  if (settings.proxyTrusted) {
+    console.log("Trust Proxy enabled (from settings).");
+    app.set('trust proxy', 1);
+  } else {
+    console.log("Trust Proxy disabled (default).");
+    app.set('trust proxy', 0);
+  }
+
   console.log(`Lidarr URL (configured): ${settings.lidarrUrl || "http://localhost:8686"}`);
 
+  await probeLidarrUrl();
   await probeLidarrUrl();
   initScheduler();
 });
 
+// Centralized Error Handler
+import { errorHandler } from "./src/middleware/errorHandler.js";
+app.use(errorHandler);

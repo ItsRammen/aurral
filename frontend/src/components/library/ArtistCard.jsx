@@ -1,26 +1,27 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Clock, ExternalLink, Heart, Trash2, Loader, Disc, ListMusic, CheckCircle, AlertCircle } from 'lucide-react';
+import { Clock, ExternalLink, Heart, Trash2, Loader, Disc, ListMusic } from 'lucide-react';
 import ArtistImage from '../ArtistImage';
+import ArtistStatusBadge from '../ArtistStatusBadge';
 
 const ArtistCard = ({ artist, isLiked, onToggleLike, onDelete, isDeleting, isLiking }) => {
     const navigate = useNavigate();
     const [isHovered, setIsHovered] = useState(false);
 
     const getArtistImage = (artist) => {
-        if (artist.images && artist.images.length > 0) {
+        // Use local proxy if we have an MBID (foreignArtistId in Lidarr)
+        if (artist.foreignArtistId) {
+            return `/api/artists/${artist.foreignArtistId}/image`;
+        }
+        // Fallback to Lidarr mediacover
+        if (artist.images && artist.images.length > 0 && artist.id) {
             const posterImage = artist.images.find(
                 (img) => img.coverType === "poster" || img.coverType === "fanart",
             );
             const image = posterImage || artist.images[0];
-
-            if (image && artist.id) {
-                const coverType = image.coverType || "poster";
-                const filename = `${coverType}.jpg`;
-                return `/api/lidarr/mediacover/${artist.id}/${filename}`;
-            }
-
-            return image?.remoteUrl || image?.url || null;
+            const coverType = image.coverType || "poster";
+            const filename = `${coverType}.jpg`;
+            return `/api/lidarr/mediacover/${artist.id}/${filename}`;
         }
         return null;
     };
@@ -49,14 +50,12 @@ const ArtistCard = ({ artist, isLiked, onToggleLike, onDelete, isDeleting, isLik
                 {/* Overlay Gradient on Hover */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
 
-                {/* Monitored Status Badge */}
-                <div className={`absolute top-3 left-3 px-2 py-1 rounded-lg backdrop-blur-md text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm ${artist.monitored
-                        ? 'bg-green-500/90 text-white'
-                        : 'bg-gray-500/90 text-white'
-                    }`}>
-                    {artist.monitored ? <CheckCircle className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
-                    {artist.monitored ? 'Monitored' : 'Unmonitored'}
-                </div>
+                {/* Artist Status Badge */}
+                <ArtistStatusBadge
+                    artist={artist}
+                    variant="pill"
+                    className="absolute top-3 left-3"
+                />
 
                 {/* Quick Actions Overlay */}
                 <div className="absolute top-3 right-3 flex flex-col gap-2 translate-x-12 group-hover:translate-x-0 transition-transform duration-300">
@@ -64,8 +63,8 @@ const ArtistCard = ({ artist, isLiked, onToggleLike, onDelete, isDeleting, isLik
                         onClick={(e) => { e.stopPropagation(); onToggleLike(e, artist); }}
                         disabled={isLiking}
                         className={`w-9 h-9 rounded-full flex items-center justify-center backdrop-blur-md shadow-lg transition-all ${isLiked
-                                ? 'bg-red-500 text-white hover:bg-red-600'
-                                : 'bg-white/90 dark:bg-black/60 text-gray-700 dark:text-gray-200 hover:text-red-500 hover:scale-110'
+                            ? 'bg-red-500 text-white hover:bg-red-600'
+                            : 'bg-white/90 dark:bg-black/60 text-gray-700 dark:text-gray-200 hover:text-red-500 hover:scale-110'
                             }`}
                         title={isLiked ? "Unlike" : "Like"}
                     >

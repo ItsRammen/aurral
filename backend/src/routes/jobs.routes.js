@@ -7,6 +7,7 @@ import {
     isPersonalUpdating
 } from "../services/discovery.js";
 import { syncNavidromeHistory } from "../services/navidrome.js";
+import { prefetchArtistImages } from "../services/imageProxy.js";
 import { requirePermission } from "../middleware/auth.js";
 
 const router = express.Router();
@@ -19,7 +20,7 @@ router.get("/status", requirePermission("admin"), (req, res) => {
     res.json(jobs);
 });
 
-// POST /api/jobs/discover - Trigger global discovery
+// POST /api/jobs/discover - Trigger global discovery (legacy)
 router.post("/discover", requirePermission("admin"), async (req, res) => {
     if (discoveryCache.isUpdating) {
         return res.status(400).json({ error: "Discovery is already running" });
@@ -29,6 +30,18 @@ router.post("/discover", requirePermission("admin"), async (req, res) => {
     updateDiscoveryCache().catch(err => console.error("Manual discovery failed:", err));
 
     res.json({ message: "Global discovery started" });
+});
+
+// POST /api/jobs/refresh-discovery - Trigger global discovery refresh
+router.post("/refresh-discovery", requirePermission("admin"), async (req, res) => {
+    if (discoveryCache.isUpdating) {
+        return res.status(400).json({ error: "Discovery is already running" });
+    }
+
+    // Run in background
+    updateDiscoveryCache().catch(err => console.error("Discovery refresh failed:", err));
+
+    res.json({ message: "Discovery refresh started", success: true });
 });
 
 // POST /api/jobs/refresh-navidrome - Trigger Navidrome history sync & personal discovery
@@ -46,6 +59,21 @@ router.post("/refresh-navidrome", requirePermission("admin"), async (req, res) =
     } catch (error) {
         console.error("Manual Navidrome job failed:", error);
         res.status(500).json({ error: "Failed to run Navidrome job" });
+    }
+});
+
+// POST /api/jobs/prefetch-images - Trigger image prefetch for discovery + library artists
+router.post("/prefetch-images", requirePermission("admin"), async (req, res) => {
+    try {
+        console.log("Manual trigger: Prefetching artist images...");
+
+        // Run in background
+        prefetchArtistImages().catch(err => console.error("Image prefetch failed:", err));
+
+        res.json({ message: "Image prefetch job started", success: true });
+    } catch (error) {
+        console.error("Image prefetch job failed:", error);
+        res.status(500).json({ error: "Failed to start image prefetch job" });
     }
 });
 

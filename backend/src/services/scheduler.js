@@ -1,7 +1,9 @@
 import { db } from "../config/db.js";
 import { updateDiscoveryCache, refreshPersonalDiscoveryForAllUsers } from "./discovery.js";
 import { syncNavidromeHistory } from "./navidrome.js";
+import { prefetchArtistImages } from "./imageProxy.js";
 import { loadSettings } from "./api.js";
+import { startDownloadTracker } from "./downloadTracker.js";
 
 let discoveryInterval = null;
 
@@ -45,4 +47,18 @@ export const initScheduler = async () => {
 
     setInterval(refreshPersonalDiscoveryForAllUsers, 1 * 60 * 60 * 1000);
     setTimeout(refreshPersonalDiscoveryForAllUsers, 30000);
+
+    // Image prefetch - run after discovery cache is loaded, then hourly
+    setTimeout(() => {
+        prefetchArtistImages().catch(err => console.error("Startup image prefetch failed:", err));
+    }, 60000); // 1 minute after startup
+    setInterval(() => {
+        prefetchArtistImages().catch(err => console.error("Scheduled image prefetch failed:", err));
+    }, 6 * 60 * 60 * 1000); // Every 6 hours
+
+    // Download tracker - monitors queue and handles stuck downloads
+    setTimeout(() => {
+        startDownloadTracker().catch(err => console.error("Download tracker failed to start:", err));
+    }, 15000); // 15 seconds after startup
 };
+

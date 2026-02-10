@@ -6,13 +6,14 @@ import {
     LASTFM_API_KEY
 } from "../services/api.js";
 import { getArtistImage } from "../services/images.js";
+import { getCachedImage } from "../services/imageProxy.js";
 
 const router = express.Router();
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // GET /api/artists/likes
-router.get("/likes", async (req, res) => {
+router.get("/likes", async (req, res, next) => {
     try {
         const userLikes = await db.Like.findAll({
             where: { userId: req.user.id },
@@ -20,12 +21,12 @@ router.get("/likes", async (req, res) => {
         });
         res.json(userLikes.map(l => l.mbid));
     } catch (e) {
-        res.status(500).json({ error: "Failed to fetch likes" });
+        next(e);
     }
 });
 
 // POST /api/artists/:mbid/like
-router.post("/:mbid/like", async (req, res) => {
+router.post("/:mbid/like", async (req, res, next) => {
     const { mbid } = req.params;
     const { name, image } = req.body;
 
@@ -50,13 +51,12 @@ router.post("/:mbid/like", async (req, res) => {
             return res.json({ liked: true });
         }
     } catch (e) {
-        console.error("Like error:", e);
-        res.status(500).json({ error: "Failed to toggle like" });
+        next(e);
     }
 });
 
 // GET /api/artists/:mbid - Artist Details
-router.get("/:mbid", async (req, res) => {
+router.get("/:mbid", async (req, res, next) => {
     try {
         const { mbid } = req.params;
 
@@ -109,15 +109,12 @@ router.get("/:mbid", async (req, res) => {
             requestedByUserId: match ? match.requestedByUserId : null
         });
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to fetch artist details",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
 // GET /api/artists/:mbid/cover
-router.get("/:mbid/cover", async (req, res) => {
+router.get("/:mbid/cover", async (req, res, next) => {
     try {
         const { mbid } = req.params;
 
@@ -128,15 +125,36 @@ router.get("/:mbid/cover", async (req, res) => {
         const result = await getArtistImage(mbid, req.user?.lastfmApiKey);
         res.json({ images: result.images });
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to fetch cover art",
-            message: error.message,
-        });
+        next(error);
+    }
+});
+
+// GET /api/artists/:mbid/image - Proxy Image Service
+router.get("/:mbid/image", async (req, res, next) => {
+    try {
+        const { mbid } = req.params;
+
+        if (!UUID_REGEX.test(mbid)) {
+            return res.status(400).send("Invalid MBID");
+        }
+
+        const { path: imagePath, exists } = await getCachedImage(mbid, req.user?.lastfmApiKey);
+
+        if (exists && imagePath) {
+            res.setHeader("Content-Type", "image/jpeg");
+            res.setHeader("Cache-Control", "public, max-age=31536000"); // 1 Year Cache
+            return res.sendFile(imagePath);
+        }
+
+        // Return 404 image placeholder or just 404 status
+        res.status(404).send("Image not found");
+    } catch (error) {
+        next(error);
     }
 });
 
 // GET /api/artists/:mbid/similar
-router.get("/:mbid/similar", async (req, res) => {
+router.get("/:mbid/similar", async (req, res, next) => {
     try {
         const { mbid } = req.params;
 
@@ -249,10 +267,7 @@ router.get("/:mbid/similar", async (req, res) => {
 
         res.json({ artists: formattedArtists });
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to fetch similar artists",
-            message: error.message,
-        });
+        next(error);
     }
 });
 

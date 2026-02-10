@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Save, Loader } from "lucide-react";
+import { Save, Loader, AlertTriangle } from "lucide-react";
 import {
   checkHealth,
   getLidarrRootFolders,
@@ -14,6 +14,7 @@ import { useToast } from "../contexts/ToastContext";
 
 // Components
 import SettingsTabs from "../components/settings/SettingsTabs";
+import PageHeader from "../components/PageHeader";
 import GeneralTab from "../components/settings/GeneralTab";
 import IntegrationsTab from "../components/settings/IntegrationsTab";
 import AuthTab from "../components/settings/AuthTab";
@@ -133,25 +134,50 @@ function SettingsPage() {
   }
 
   return (
-    <div className="min-h-screen pb-32 animate-fade-in relative max-w-5xl mx-auto px-4 md:px-8">
-      {/* Settings Header */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-gray-900 dark:text-white tracking-tight">Settings</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Configure global and default settings for Aurral.</p>
+    <div className="min-h-screen pb-32 animate-fade-in relative max-w-7xl mx-auto px-4 md:px-8">
+      <PageHeader
+        title="Settings"
+        subtitle="Configure global and default settings for Aurral."
+        action={
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="btn btn-primary shadow-lg shadow-primary-500/20 px-6 py-2.5 flex items-center gap-2"
+          >
+            {saving ? <Loader className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+            Save Changes
+          </button>
+        }
+      />
+
+      {/* Security Warnings Banner */}
+      {health?.securityWarnings?.length > 0 && (
+        <div className="mb-6 bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+          <div>
+            <h4 className="font-bold text-amber-600 dark:text-amber-400 text-sm">Security Warning</h4>
+            <ul className="text-sm text-amber-700 dark:text-amber-300 mt-1 space-y-1">
+              {health.securityWarnings.map((warning, i) => (
+                <li key={i}>• {warning}</li>
+              ))}
+            </ul>
+            <p className="text-xs text-amber-600/70 dark:text-amber-400/70 mt-2">
+              Set <code className="bg-amber-500/20 px-1 rounded">JWT_SECRET</code> and <code className="bg-amber-500/20 px-1 rounded">SESSION_SECRET</code> environment variables in your Docker container.
+            </p>
+          </div>
         </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="btn btn-primary shadow-lg shadow-primary-500/20 px-6 py-2.5 flex items-center gap-2"
-        >
-          {saving ? <Loader className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
-          Save Changes
-        </button>
-      </div>
+      )}
 
       {/* Tabs Navigation */}
-      <SettingsTabs activeTab={activeTab} setActiveTab={setActiveTab} />
+      <SettingsTabs
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        connectionStatus={{
+          lidarr: !!(settings.lidarrUrl && settings.lidarrApiKey),
+          navidrome: navidromeStatus.connected,
+          lastfm: !!settings.lastfmApiKey
+        }}
+      />
 
       {/* Tab Content */}
       <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-300">

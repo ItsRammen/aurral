@@ -587,8 +587,8 @@ export const refreshPersonalDiscoveryForAllUsers = async () => {
         for (const user of users) {
             // Sequelize model instance, direct property access is fine or use .dataValues
             try {
-                const userApiKey = user.lastfmApiKey;
-                await generatePersonalDiscovery(user.id, userApiKey);
+                // User-level API keys not implemented - use global key (null falls back to LASTFM_API_KEY)
+                await generatePersonalDiscovery(user.id, null);
             } catch (error) {
                 console.warn(`Failed to generate personal discovery for user ${user.username}:`, error.message);
             }

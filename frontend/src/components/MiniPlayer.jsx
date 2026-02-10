@@ -3,9 +3,11 @@ import AudioPlayer from "react-h5-audio-player";
 import "react-h5-audio-player/lib/styles.css";
 import { X, Music } from "lucide-react";
 import { usePlayer } from "../contexts/PlayerContext";
+import { useAuth } from "../contexts/AuthContext";
 
 function MiniPlayer() {
   const { currentTrack, audioRef, stop, playNext, setIsPlaying } = usePlayer();
+  const { token } = useAuth();
 
   useEffect(() => {
     // Auto-play when track changes
@@ -17,7 +19,8 @@ function MiniPlayer() {
   if (!currentTrack) return null;
 
   // Get auth token for streaming URL (HTML5 audio can't use Authorization headers)
-  const authToken = localStorage.getItem("auth_token");
+  // const authToken = localStorage.getItem("auth_token");
+  const authToken = token;
   const streamUrl = `/api/navidrome/stream/${currentTrack.id}?token=${encodeURIComponent(authToken || "")}`;
   const coverUrl = currentTrack.coverArt ? `${currentTrack.coverArt}?token=${encodeURIComponent(authToken || "")}` : null;
 

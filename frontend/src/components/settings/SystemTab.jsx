@@ -1,7 +1,13 @@
-import React, { useState } from 'react';
-import { Database, RefreshCw, Trash2, TrendingUp } from 'lucide-react';
-import api, { checkHealth, runNavidromeJob, getJobStatus } from '../../utils/api';
+import React, { useState, useEffect } from 'react';
+import { Database, RefreshCw, Trash2, TrendingUp, HardDrive, Image, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import api, { checkHealth, runNavidromeJob, getJobStatus, getSystemStats } from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
+import {
+    SettingsCard,
+    SettingsSectionTitle,
+    SettingsToggle,
+    SettingsRow
+} from './SettingsComponents';
 
 export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHealth }) {
     const { showSuccess, showError, showInfo } = useToast();
@@ -9,23 +15,33 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
     const [refreshingPersonal, setRefreshingPersonal] = useState(false);
     const [clearingCache, setClearingCache] = useState(false);
     const [runningNavidromeJob, setRunningNavidromeJob] = useState(false);
+    const [systemStats, setSystemStats] = useState(null);
+    const [loadingStats, setLoadingStats] = useState(true);
 
-    // Handlers (Moved from SettingsPage)
+    useEffect(() => { fetchSystemStats(); }, []);
+
+    const fetchSystemStats = async () => {
+        setLoadingStats(true);
+        try {
+            const stats = await getSystemStats();
+            setSystemStats(stats);
+        } catch (err) {
+            console.error("Failed to fetch system stats:", err);
+        } finally {
+            setLoadingStats(false);
+        }
+    };
+
     const handleRefreshDiscovery = async () => {
         if (refreshingDiscovery) return;
         setRefreshingDiscovery(true);
         try {
             await api.post("/discover/refresh");
-            showInfo(
-                "Discovery refresh started in background. This may take a few minutes to fully hydrate images.",
-            );
+            showInfo("Discovery refresh started in background.");
             const healthData = await checkHealth();
             setHealth(healthData);
         } catch (err) {
-            showError(
-                "Failed to start refresh: " +
-                (err.response?.data?.message || err.message),
-            );
+            showError("Failed to start refresh: " + (err.response?.data?.message || err.message));
         } finally {
             setRefreshingDiscovery(false);
         }
@@ -47,23 +63,16 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
     };
 
     const handleClearCache = async () => {
-        if (
-            !window.confirm(
-                "Are you sure you want to clear the discovery and image cache? This will reset all recommendations until the next refresh.",
-            )
-        )
-            return;
+        if (!window.confirm("Clear discovery and image cache? This resets recommendations until next refresh.")) return;
         setClearingCache(true);
         try {
             await api.post("/discover/clear");
             showSuccess("Cache cleared successfully.");
             const healthData = await checkHealth();
             setHealth(healthData);
+            fetchSystemStats();
         } catch (err) {
-            showError(
-                "Failed to clear cache: " +
-                (err.response?.data?.message || err.message),
-            );
+            showError("Failed to clear cache: " + (err.response?.data?.message || err.message));
         } finally {
             setClearingCache(false);
         }
@@ -73,7 +82,7 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
         setRunningNavidromeJob(true);
         try {
             await runNavidromeJob();
-            showSuccess("Navidrome refresh job started in background");
+            showSuccess("Navidrome refresh job started");
             setTimeout(async () => {
                 const jobsData = await getJobStatus();
                 setJobs(jobsData);
@@ -83,149 +92,201 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
         } finally {
             setRunningNavidromeJob(false);
         }
-    }
+    };
 
     const getLastRun = (jobName) => {
         const job = jobs.filter(j => j.name === jobName)
             .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))[0];
         if (!job) return "Never run";
-
-        const date = new Date(job.completedAt || job.startedAt);
-        return date.toLocaleString();
+        return new Date(job.completedAt || job.startedAt).toLocaleString();
     };
 
     const getJobState = (jobName) => {
         const job = jobs.filter(j => j.name === jobName)
             .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))[0];
         return job?.status || 'idle';
-    }
-
+    };
 
     return (
         <section className="space-y-6">
+            {/* Image Cache Stats */}
+            {systemStats?.imageCache && (
+                <SettingsCard>
+                    <div className="flex items-center justify-between mb-6">
+                        <SettingsSectionTitle className="mb-0">Image Cache</SettingsSectionTitle>
+                        <button
+                            onClick={fetchSystemStats}
+                            disabled={loadingStats}
+                            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                        >
+                            <RefreshCw className={`w-4 h-4 text-gray-500 ${loadingStats ? 'animate-spin' : ''}`} />
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                        <StatCard icon={Image} value={systemStats.imageCache.total} label="Total" color="gray" />
+                        <StatCard icon={CheckCircle2} value={systemStats.imageCache.cachedLocally} label="Cached" color="green" />
+                        <StatCard icon={Clock} value={systemStats.imageCache.pendingDownload} label="Pending" color="yellow" />
+                        <StatCard icon={XCircle} value={systemStats.imageCache.notFound} label="Not Found" color="red" />
+                        <StatCard icon={HardDrive} value={systemStats.imageCache.diskUsage} label="Disk Usage" color="blue" />
+                    </div>
+                </SettingsCard>
+            )}
+
             {/* System Actions */}
-            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm">
-                <h3 className="text-lg font-black text-gray-900 dark:text-white mb-6">System Maintenance</h3>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                    <button
+            <SettingsCard>
+                <SettingsSectionTitle>System Maintenance</SettingsSectionTitle>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <ActionButton
+                        icon={RefreshCw}
+                        title="Refresh Discovery"
+                        description="Update recommendations and trending data"
                         onClick={handleRefreshDiscovery}
-                        disabled={refreshingDiscovery}
-                        className="p-4 rounded-2xl bg-primary-50 dark:bg-primary-900/10 border border-primary-100 dark:border-primary-900/30 text-left hover:bg-primary-100 dark:hover:bg-primary-900/20 transition-all group"
-                    >
-                        <RefreshCw className={`w-6 h-6 text-primary-600 mb-3 ${refreshingDiscovery ? "animate-spin" : ""}`} />
-                        <h4 className="font-bold text-gray-900 dark:text-white mb-1">Refresh Discovery</h4>
-                        <p className="text-xs text-gray-500">Force update recommendations and trending data.</p>
-                    </button>
-
-                    <button
+                        loading={refreshingDiscovery}
+                        color="primary"
+                    />
+                    <ActionButton
+                        icon={TrendingUp}
+                        title="Update Personal"
+                        description="Recalculate user recommendations"
                         onClick={handleRefreshPersonal}
-                        disabled={refreshingPersonal}
-                        className="p-4 rounded-2xl bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-900/30 text-left hover:bg-purple-100 dark:hover:bg-purple-900/20 transition-all"
-                    >
-                        <TrendingUp className={`w-6 h-6 text-purple-600 mb-3 ${refreshingPersonal ? "animate-spin" : ""}`} />
-                        <h4 className="font-bold text-gray-900 dark:text-white mb-1">Update Personal Stats</h4>
-                        <p className="text-xs text-gray-500">Recalculate user specific recommendations.</p>
-                    </button>
-
-                    <button
-                        onClick={handleClearCache}
-                        disabled={clearingCache}
-                        className="p-4 rounded-2xl bg-red-50 dark:bg-red-900/10 border border-red-100 dark:border-red-900/30 text-left hover:bg-red-100 dark:hover:bg-red-900/20 transition-all"
-                    >
-                        <Trash2 className="w-6 h-6 text-red-600 mb-3" />
-                        <h4 className="font-bold text-gray-900 dark:text-white mb-1">Clear Cache</h4>
-                        <p className="text-xs text-gray-500">Purge discovery data and cached images.</p>
-                    </button>
-
-                    <button
+                        loading={refreshingPersonal}
+                        color="purple"
+                    />
+                    <ActionButton
+                        icon={Database}
+                        title="Sync Navidrome"
+                        description="Trigger library sync manually"
                         onClick={handleRunNavidromeJob}
-                        disabled={runningNavidromeJob}
-                        className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 text-left hover:bg-blue-100 dark:hover:bg-blue-900/20 transition-all"
-                    >
-                        <Database className={`w-6 h-6 text-blue-600 mb-3 ${runningNavidromeJob ? "animate-spin" : ""}`} />
-                        <h4 className="font-bold text-gray-900 dark:text-white mb-1">Sync Navidrome</h4>
-                        <p className="text-xs text-gray-500">Manually trigger Navidrome library sync.</p>
-                    </button>
+                        loading={runningNavidromeJob}
+                        color="blue"
+                    />
+                    <ActionButton
+                        icon={Trash2}
+                        title="Clear Cache"
+                        description="Purge discovery and image cache"
+                        onClick={handleClearCache}
+                        loading={clearingCache}
+                        color="red"
+                    />
                 </div>
-            </div>
+            </SettingsCard>
 
             {/* Network Configuration */}
-            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm mb-6">
-                <h3 className="text-lg font-black text-gray-900 dark:text-white mb-6">Network Configuration</h3>
-                <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl">
-                    <div>
-                        <h5 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                            Behind Reverse Proxy
-                            {settings.proxyTrusted && <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full uppercase">Enabled</span>}
-                        </h5>
-                        <p className="text-xs text-gray-500">Enable if Aurral is behind Nginx, Apache, Cloudflare, etc. to correctly identify client IPs and protocol.</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                            type="checkbox"
-                            checked={settings.proxyTrusted || false}
-                            onChange={(e) => handleUpdate("proxyTrusted", e.target.checked)}
-                            className="sr-only peer"
-                        />
-                        <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
-                    </label>
-                </div>
-            </div>
+            <SettingsCard>
+                <SettingsSectionTitle>Network Configuration</SettingsSectionTitle>
+                <SettingsToggle
+                    checked={settings.proxyTrusted}
+                    onChange={(val) => handleUpdate("proxyTrusted", val)}
+                    label="Behind Reverse Proxy"
+                    description="Enable if Aurral is behind Nginx, Apache, Cloudflare, etc."
+                />
+            </SettingsCard>
 
             {/* Scheduler */}
-            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm">
-                <h3 className="text-lg font-black text-gray-900 dark:text-white mb-6">Scheduler & Jobs</h3>
+            <SettingsCard>
+                <SettingsSectionTitle>Scheduler & Jobs</SettingsSectionTitle>
 
-                <div className="space-y-4 mb-8">
-                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl">
-                        <div>
-                            <h5 className="font-bold text-gray-900 dark:text-white">Discovery Refresh Interval</h5>
-                            <p className="text-xs text-gray-500">How often to fetch new data from external APIs (hours).</p>
-                        </div>
-                        <input
-                            type="number"
-                            min="1"
-                            max="168"
-                            className="w-20 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl py-2 px-3 text-center font-bold outline-none focus:ring-2 focus:ring-primary-500"
-                            value={settings.discoveryRefreshInterval || 24}
-                            onChange={(e) => handleUpdate("discoveryRefreshInterval", parseInt(e.target.value))}
-                        />
+                <SettingsRow className="mb-6">
+                    <div>
+                        <h5 className="font-bold text-gray-900 dark:text-white">Discovery Refresh Interval</h5>
+                        <p className="text-xs text-gray-500">How often to fetch new data from external APIs (hours)</p>
                     </div>
-                </div>
+                    <input
+                        type="number"
+                        min="1"
+                        max="168"
+                        className="w-20 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl py-2 px-3 text-center font-bold outline-none focus:ring-2 focus:ring-primary-500"
+                        value={settings.discoveryRefreshInterval || 24}
+                        onChange={(e) => handleUpdate("discoveryRefreshInterval", parseInt(e.target.value))}
+                    />
+                </SettingsRow>
 
-                <div className="space-y-4">
-                    <h5 className="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1 mb-2">Job History</h5>
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                            <thead>
-                                <tr className="text-xs text-gray-400 uppercase border-b border-gray-100 dark:border-gray-800">
-                                    <th className="py-2 px-4">Job Name</th>
-                                    <th className="py-2 px-4">Last Run</th>
-                                    <th className="py-2 px-4">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody className="text-sm">
-                                {['DiscoveryRefresh', 'PersonalDiscovery', 'NavidromeSync'].map(job => (
-                                    <tr key={job} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
-                                        <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">{job}</td>
-                                        <td className="py-3 px-4 text-gray-500">{getLastRun(job)}</td>
-                                        <td className="py-3 px-4">
-                                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${getJobState(job) === 'running' ? 'bg-blue-100 text-blue-600' :
-                                                getJobState(job) === 'completed' ? 'bg-green-100 text-green-600' :
-                                                    getJobState(job) === 'failed' ? 'bg-red-100 text-red-600' :
-                                                        'bg-gray-100 text-gray-500'
-                                                }`}>
-                                                {getJobState(job)}
-                                            </span>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+                <JobHistoryTable jobs={['DiscoveryRefresh', 'PersonalDiscovery', 'NavidromeSync']} getLastRun={getLastRun} getJobState={getJobState} />
+            </SettingsCard>
         </section>
+    );
+}
+
+// Helper Components
+function StatCard({ icon: Icon, value, label, color }) {
+    const colorMap = {
+        gray: 'bg-gray-50 dark:bg-gray-800 text-gray-400',
+        green: 'bg-green-50 dark:bg-green-900/20 text-green-500',
+        yellow: 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-500',
+        red: 'bg-red-50 dark:bg-red-900/20 text-red-500',
+        blue: 'bg-blue-50 dark:bg-blue-900/20 text-blue-500',
+    };
+    const textColorMap = {
+        gray: 'text-gray-900 dark:text-white',
+        green: 'text-green-600 dark:text-green-400',
+        yellow: 'text-yellow-600 dark:text-yellow-400',
+        red: 'text-red-600 dark:text-red-400',
+        blue: 'text-blue-600 dark:text-blue-400',
+    };
+
+    return (
+        <div className={`p-4 rounded-2xl text-center ${colorMap[color].split(' ').slice(0, 2).join(' ')}`}>
+            <Icon className={`w-5 h-5 mx-auto mb-2 ${colorMap[color].split(' ').slice(2).join(' ')}`} />
+            <p className={`text-2xl font-black ${textColorMap[color]}`}>{value}</p>
+            <p className="text-[10px] uppercase font-bold text-gray-500 tracking-widest">{label}</p>
+        </div>
+    );
+}
+
+function ActionButton({ icon: Icon, title, description, onClick, loading, color }) {
+    const colorMap = {
+        primary: 'bg-primary-50 dark:bg-primary-900/10 border-primary-100 dark:border-primary-900/30 hover:bg-primary-100 dark:hover:bg-primary-900/20 text-primary-600',
+        purple: 'bg-purple-50 dark:bg-purple-900/10 border-purple-100 dark:border-purple-900/30 hover:bg-purple-100 dark:hover:bg-purple-900/20 text-purple-600',
+        blue: 'bg-blue-50 dark:bg-blue-900/10 border-blue-100 dark:border-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-900/20 text-blue-600',
+        red: 'bg-red-50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/20 text-red-600',
+    };
+
+    return (
+        <button
+            onClick={onClick}
+            disabled={loading}
+            className={`p-4 rounded-2xl border text-left transition-all ${colorMap[color]}`}
+        >
+            <Icon className={`w-5 h-5 mb-2 ${loading ? "animate-spin" : ""}`} />
+            <h4 className="font-bold text-sm text-gray-900 dark:text-white mb-1">{title}</h4>
+            <p className="text-[10px] text-gray-500">{description}</p>
+        </button>
+    );
+}
+
+function JobHistoryTable({ jobs, getLastRun, getJobState }) {
+    const statusColors = {
+        running: 'bg-blue-100 text-blue-600',
+        completed: 'bg-green-100 text-green-600',
+        failed: 'bg-red-100 text-red-600',
+        idle: 'bg-gray-100 text-gray-500',
+    };
+
+    return (
+        <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+                <thead>
+                    <tr className="text-xs text-gray-400 uppercase border-b border-gray-100 dark:border-gray-800">
+                        <th className="py-2 px-4">Job Name</th>
+                        <th className="py-2 px-4">Last Run</th>
+                        <th className="py-2 px-4">Status</th>
+                    </tr>
+                </thead>
+                <tbody className="text-sm">
+                    {jobs.map(job => (
+                        <tr key={job} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
+                            <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">{job}</td>
+                            <td className="py-3 px-4 text-gray-500">{getLastRun(job)}</td>
+                            <td className="py-3 px-4">
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusColors[getJobState(job)] || statusColors.idle}`}>
+                                    {getJobState(job)}
+                                </span>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
     );
 }

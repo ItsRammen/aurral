@@ -1,34 +1,5 @@
 import { useState, useEffect } from "react";
 import { Music, Loader } from "lucide-react";
-import { getArtistCover } from "../utils/api";
-
-const queue = [];
-let active = 0;
-const MAX_CONCURRENT = 3;
-
-const processQueue = () => {
-  if (active >= MAX_CONCURRENT || queue.length === 0) return;
-  const next = queue.shift();
-  active++;
-  next().finally(() => {
-    active--;
-    processQueue();
-  });
-};
-
-const scheduleFetch = (fn) => {
-  return new Promise((resolve, reject) => {
-    queue.push(async () => {
-      try {
-        const res = await fn();
-        resolve(res);
-      } catch (err) {
-        reject(err);
-      }
-    });
-    processQueue();
-  });
-};
 
 const ArtistImage = ({
   mbid,
@@ -37,59 +8,36 @@ const ArtistImage = ({
   className = "",
   showLoading = true,
 }) => {
-  const [currentSrc, setCurrentSrc] = useState(src);
+  // ALWAYS use proxy endpoint if mbid is available, ignore external src
+  const getImageSource = () => {
+    if (mbid) {
+      return `/api/artists/${mbid}/image`;
+    }
+    // Fallback to provided src only if no mbid
+    return src || null;
+  };
+
+  const [currentSrc, setCurrentSrc] = useState(getImageSource());
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    setCurrentSrc(src);
+    setCurrentSrc(getImageSource());
     setHasError(false);
     setIsLoading(true);
   }, [src, mbid]);
 
-  useEffect(() => {
-    if (!src && mbid) {
-      fetchBackendCover();
-    } else if (!src && !mbid) {
-      setIsLoading(false);
-      setHasError(true);
-    }
-  }, [src, mbid]);
-
-  const fetchBackendCover = async () => {
-    try {
-      if (!currentSrc) setIsLoading(true);
-
-      const data = await scheduleFetch(() => getArtistCover(mbid));
-      if (data.images && data.images.length > 0) {
-        const front = data.images.find((img) => img.front) || data.images[0];
-        const url = front.image;
-        setCurrentSrc(url);
-      } else {
-        setHasError(true);
-        setIsLoading(false);
-      }
-    } catch (err) {
-      setHasError(true);
-      setIsLoading(false);
-    }
-  };
-
   const handleLoad = () => {
     setIsLoading(false);
+    setHasError(false);
   };
 
   const handleError = () => {
-    if (currentSrc === src && mbid) {
-      setCurrentSrc(null);
-      fetchBackendCover();
-    } else {
-      setHasError(true);
-      setIsLoading(false);
-    }
+    setHasError(true);
+    setIsLoading(false);
   };
 
-  if (hasError) {
+  if (hasError || !currentSrc) {
     return (
       <div
         className={`flex items-center justify-center bg-gray-200 dark:bg-gray-800 text-gray-400 dark:text-gray-600 ${className}`}
@@ -108,18 +56,15 @@ const ArtistImage = ({
           <Loader className="w-8 h-8 text-primary-500 animate-spin" />
         </div>
       )}
-      {currentSrc && (
-        <img
-          src={currentSrc}
-          alt={alt || "Artist cover"}
-          className={`w-full h-full object-cover transition-opacity duration-500 ${
-            isLoading ? "opacity-0" : "opacity-100"
+      <img
+        src={currentSrc}
+        alt={alt || "Artist cover"}
+        className={`w-full h-full object-cover transition-opacity duration-500 ${isLoading ? "opacity-0" : "opacity-100"
           }`}
-          onLoad={handleLoad}
-          onError={handleError}
-          loading="lazy"
-        />
-      )}
+        onLoad={handleLoad}
+        onError={handleError}
+        loading="lazy"
+      />
     </div>
   );
 };

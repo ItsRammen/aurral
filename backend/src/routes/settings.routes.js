@@ -1,23 +1,81 @@
 import express from "express";
 import { db } from "../config/db.js";
+import { Op } from "sequelize";
 import axios from "axios";
 import { requirePermission } from "../middleware/auth.js";
-import { probeLidarrUrl, loadSettings, LIDARR_URL, LIDARR_API_KEY } from "../services/api.js";
+import { probeLidarrUrl, loadSettings, LIDARR_URL, LIDARR_API_KEY, lastfmRequest } from "../services/api.js";
 import { restartDiscoverySchedule } from "../services/scheduler.js";
+import { updateDiscoveryCache } from "../services/discovery.js";
 
 const router = express.Router();
 
-router.get("/", async (req, res) => {
+router.get("/", requirePermission("admin"), async (req, res, next) => {
     try {
         const settings = await loadSettings();
         res.json(settings);
     } catch (error) {
-        res.status(500).json({ error: "Failed to load settings" });
+        next(error);
+    }
+});
+
+// Get system statistics
+router.get("/system/stats", requirePermission("admin"), async (req, res, next) => {
+    try {
+        const fs = await import('fs/promises');
+        const path = await import('path');
+
+        // Get image cache stats
+        const totalImages = await db.ImageCache.count();
+        const cachedLocally = await db.ImageCache.count({
+            where: {
+                localPath: { [Op.not]: null }
+            }
+        });
+        const notFound = await db.ImageCache.count({
+            where: {
+                url: 'NOT_FOUND'
+            }
+        });
+
+        // Calculate disk usage for cached images
+        let diskUsageBytes = 0;
+        const cacheDir = path.default.join(process.cwd(), 'data', 'image_cache');
+        try {
+            const files = await fs.readdir(cacheDir);
+            for (const file of files) {
+                const stats = await fs.stat(path.default.join(cacheDir, file));
+                diskUsageBytes += stats.size;
+            }
+        } catch (e) {
+            // Cache directory may not exist
+        }
+
+        // Format disk usage
+        const formatBytes = (bytes) => {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        };
+
+        res.json({
+            imageCache: {
+                total: totalImages,
+                cachedLocally,
+                notFound,
+                pendingDownload: totalImages - cachedLocally - notFound,
+                diskUsage: formatBytes(diskUsageBytes),
+                diskUsageBytes
+            }
+        });
+    } catch (error) {
+        next(error);
     }
 });
 
 // Test Lidarr Connection
-router.post("/test-lidarr", requirePermission("admin"), async (req, res) => {
+router.post("/test-lidarr", requirePermission("admin"), async (req, res, next) => {
     const { lidarrUrl, lidarrApiKey } = req.body;
 
     if (!lidarrUrl || !lidarrApiKey) {
@@ -43,11 +101,45 @@ router.post("/test-lidarr", requirePermission("admin"), async (req, res) => {
                 return res.status(404).json({ error: "Lidarr API endpoint not found. Check URL." });
             }
         }
-        res.status(500).json({ error: error.message || "Connection failed" });
+        next(error);
     }
 });
 
-router.post("/", requirePermission("admin"), async (req, res) => {
+// Test Last.fm API Key
+router.post("/test-lastfm", requirePermission("admin"), async (req, res, next) => {
+    const { lastfmApiKey } = req.body;
+
+    if (!lastfmApiKey) {
+        return res.status(400).json({ error: "Missing Last.fm API Key" });
+    }
+
+    try {
+        // Test with a simple API call
+        const response = await axios.get("https://ws.audioscrobbler.com/2.0/", {
+            params: {
+                method: "chart.getTopArtists",
+                api_key: lastfmApiKey,
+                format: "json",
+                limit: 1
+            },
+            timeout: 5000
+        });
+
+        if (response.data?.error) {
+            return res.status(401).json({ error: response.data.message || "Invalid API Key" });
+        }
+
+        res.json({ success: true, message: "Last.fm API key is valid" });
+    } catch (error) {
+        console.error("Last.fm test connection failed:", error.message);
+        if (error.response?.data?.error) {
+            return res.status(401).json({ error: error.response.data.message || "Invalid API Key" });
+        }
+        next(error);
+    }
+});
+
+router.post("/", requirePermission("admin"), async (req, res, next) => {
     try {
         const updates = req.body;
 
@@ -81,14 +173,63 @@ router.post("/", requirePermission("admin"), async (req, res) => {
             await probeLidarrUrl();
         }
 
+        // Apply Trust Proxy setting instantly
+        if (typeof updates.proxyTrusted !== 'undefined') {
+            if (updates.proxyTrusted) {
+                console.log("Trust Proxy enabled via settings update.");
+                req.app.set('trust proxy', 1);
+            } else {
+                console.log("Trust Proxy disabled via settings update.");
+                req.app.set('trust proxy', 0);
+            }
+        }
+
         if (updates.discoveryRefreshInterval !== oldDiscoveryRefreshInterval) {
             restartDiscoverySchedule();
         }
 
         res.json(newSettings);
     } catch (error) {
-        console.error("Failed to save settings:", error);
-        res.status(500).json({ error: "Failed to save settings" });
+        next(error);
+    }
+});
+
+// Test OIDC Connection
+router.post("/test-oidc", requirePermission("admin"), async (req, res, next) => {
+    const { issuerUrl } = req.body;
+
+    if (!issuerUrl) {
+        return res.status(400).json({ error: "Missing OIDC Issuer URL" });
+    }
+
+    let discoveryUrl = issuerUrl;
+
+    try {
+        // Handle cases where user pastes the full metadata URL or just the issuer
+        if (!discoveryUrl.includes('/.well-known/openid-configuration')) {
+            discoveryUrl = `${issuerUrl.replace(/\/$/, '')}/.well-known/openid-configuration`;
+        }
+
+        const response = await axios.get(discoveryUrl, { timeout: 5000 });
+
+        if (response.status === 200 && response.data.issuer) {
+            res.json({
+                success: true,
+                message: "OIDC Discovery Successful",
+                config: {
+                    issuer: response.data.issuer,
+                    authorization_endpoint: response.data.authorization_endpoint,
+                    token_endpoint: response.data.token_endpoint
+                }
+            });
+        } else {
+            res.status(400).json({ error: "Invalid OIDC Configuration found at URL" });
+        }
+
+    } catch (error) {
+        console.error(`OIDC test failed for ${discoveryUrl}:`, error.message);
+        const msg = error.response ? `Remote Server Error: ${error.response.status}` : error.message;
+        res.status(400).json({ error: `Discovery Failed for ${discoveryUrl}: ${msg}` });
     }
 });
 

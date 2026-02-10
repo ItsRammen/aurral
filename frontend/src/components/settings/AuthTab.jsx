@@ -1,178 +1,283 @@
 import React, { useState } from 'react';
-import { Shield, Check } from 'lucide-react';
+import { Shield, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { testOidcConnection } from '../../utils/api';
+import { useToast } from '../../contexts/ToastContext';
+import {
+    SettingsCard,
+    SettingsCardHeader,
+    SettingsSectionTitle,
+    SettingsGrid,
+    SettingsInput,
+    SettingsToggle,
+    FormField,
+    isValidUrl
+} from './SettingsComponents';
 
 export default function AuthTab({ settings, handleUpdate }) {
+    const { showSuccess, showError } = useToast();
     const [callbackType, setCallbackType] = useState('exact');
+    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [testingOidc, setTestingOidc] = useState(false);
+    const [oidcValid, setOidcValid] = useState(null);
+
+    const permissions = [
+        { id: 'request', label: 'Request', desc: 'Allows users to submit new music requests.' },
+        { id: 'auto_approve', label: 'Auto-Approve', desc: 'Automatically approves any requests made by the user.' },
+        { id: 'manage_requests', label: 'Manage Requests', desc: 'Allows users to approve or deny requests from others.' },
+        { id: 'manage_users', label: 'Manage Users', desc: 'Allows users to create and edit other users.' },
+    ];
+
+    const handlePermissionToggle = (permId, checked) => {
+        const current = settings.defaultPermissions || [];
+        const updated = checked
+            ? [...current, permId]
+            : current.filter(p => p !== permId);
+        handleUpdate("defaultPermissions", updated);
+    };
+
+    const handleTestOidc = async (e) => {
+        e.preventDefault();
+        if (!settings.oidcIssuerUrl) {
+            showError("Please enter an Issuer URL first");
+            return;
+        }
+        setTestingOidc(true);
+        setOidcValid(null);
+        try {
+            const result = await testOidcConnection(settings.oidcIssuerUrl);
+            setOidcValid(true);
+            showSuccess("Discovery Successful");
+            // Auto-fill endpoints if they are empty
+            if (!settings.oidcAuthorizationUrl && result.config.authorization_endpoint) {
+                handleUpdate("oidcAuthorizationUrl", result.config.authorization_endpoint);
+            }
+            if (!settings.oidcTokenUrl && result.config.token_endpoint) {
+                handleUpdate("oidcTokenUrl", result.config.token_endpoint);
+            }
+        } catch (err) {
+            setOidcValid(false);
+            showError(err.response?.data?.error || "OIDC Discovery Failed");
+        } finally {
+            setTestingOidc(false);
+        }
+    };
 
     return (
         <section className="space-y-6">
-            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm">
-                <div className="flex items-center gap-4 mb-8">
-                    <div className="w-12 h-12 rounded-2xl bg-primary-100 dark:bg-primary-950/30 flex items-center justify-center">
-                        <Shield className="w-8 h-8 text-primary-600 dark:text-primary-400" />
-                    </div>
-                    <div>
-                        <h3 className="text-lg font-black text-gray-900 dark:text-white">Authentication</h3>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Configure external identity providers (OIDC/OAuth2).</p>
-                    </div>
-                </div>
+            {/* OIDC Configuration */}
+            <SettingsCard>
+                <SettingsCardHeader
+                    icon={Shield}
+                    title="Authentication"
+                    description="Configure external identity providers (OIDC/OAuth2)."
+                />
 
                 <div className="space-y-6">
-                    <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800 rounded-2xl">
-                        <div>
-                            <h4 className="font-bold text-gray-900 dark:text-white">Enable OpenID Connect</h4>
-                            <p className="text-xs text-gray-500 dark:text-gray-400">Allow users to log in with an external provider (e.g., Authentik, Authelia).</p>
-                        </div>
-                        <div className="relative">
-                            <label className="relative inline-flex items-center cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={settings.oidcEnabled || false}
-                                    onChange={(e) => handleUpdate("oidcEnabled", e.target.checked)}
-                                />
-                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500"></div>
-                            </label>
-                        </div>
-                    </div>
+                    <SettingsToggle
+                        checked={settings.oidcEnabled}
+                        onChange={(val) => handleUpdate("oidcEnabled", val)}
+                        label="Enable OpenID Connect"
+                        description="Allow users to log in with an external provider (e.g., Authentik, Authelia)."
+                    />
 
                     {settings.oidcEnabled && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in slide-in-from-top-2">
-                            <div className="md:col-span-2 space-y-2">
-                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Issuer URL</label>
-                                <input
-                                    type="url"
-                                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
-                                    value={settings.oidcIssuerUrl || ""}
-                                    onChange={(e) => handleUpdate("oidcIssuerUrl", e.target.value)}
-                                    placeholder="https://auth.example.com/application/o/aurral/"
-                                />
-                                <p className="text-[10px] text-gray-400 dark:text-gray-500 px-1">Base URL of your IdP application.</p>
-                            </div>
-
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Client ID</label>
-                                <input
-                                    type="text"
-                                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
-                                    value={settings.oidcClientId || ""}
-                                    onChange={(e) => handleUpdate("oidcClientId", e.target.value)}
-                                    placeholder="aurral-client-id"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-widest pl-1">Client Secret</label>
-                                <input
-                                    type="password"
-                                    className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 transition-all text-sm"
-                                    value={settings.oidcClientSecret || ""}
-                                    onChange={(e) => handleUpdate("oidcClientSecret", e.target.value)}
-                                    placeholder="••••••••••••••••"
-                                />
-                            </div>
-
-                            <div className="md:col-span-2 space-y-2 pt-4 border-t border-gray-100 dark:border-gray-800">
-                                <h5 className="font-bold text-sm text-gray-900 dark:text-white">Advanced Overrides (Optional)</h5>
-                                <p className="text-xs text-gray-500 mb-4">Only set these if auto-discovery fails or you need custom endpoints.</p>
-
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Auth URL</label>
-                                        <input
-                                            type="text"
-                                            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl py-2 px-3 text-xs outline-none focus:ring-1 focus:ring-primary-500/20 focus:border-primary-500"
-                                            value={settings.oidcAuthorizationUrl || ""}
-                                            onChange={(e) => handleUpdate("oidcAuthorizationUrl", e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Token URL</label>
-                                        <input
-                                            type="text"
-                                            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl py-2 px-3 text-xs outline-none focus:ring-1 focus:ring-primary-500/20 focus:border-primary-500"
-                                            value={settings.oidcTokenUrl || ""}
-                                            onChange={(e) => handleUpdate("oidcTokenUrl", e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">User Info URL</label>
-                                        <input
-                                            type="text"
-                                            className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl py-2 px-3 text-xs outline-none focus:ring-1 focus:ring-primary-500/20 focus:border-primary-500"
-                                            value={settings.oidcUserInfoUrl || ""}
-                                            onChange={(e) => handleUpdate("oidcUserInfoUrl", e.target.value)}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Callback URL (Read Only)</label>
-                                            <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
-                                                <button
-                                                    onClick={() => setCallbackType('exact')}
-                                                    className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${callbackType === 'exact' ? 'bg-white dark:bg-gray-700 text-primary-500 shadow-sm' : 'text-gray-400 hover:text-gray-300'}`}
-                                                >
-                                                    Exact
-                                                </button>
-                                                <button
-                                                    onClick={() => setCallbackType('regex')}
-                                                    className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all ${callbackType === 'regex' ? 'bg-white dark:bg-gray-700 text-primary-500 shadow-sm' : 'text-gray-400 hover:text-gray-300'}`}
-                                                >
-                                                    Regex
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <input
-                                            type="text"
-                                            disabled
-                                            className="w-full bg-gray-100 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl py-2 px-3 text-xs text-gray-500 cursor-not-allowed font-mono"
-                                            value={callbackType === 'exact'
-                                                ? `${window.location.protocol}//${window.location.hostname}:3001/api/auth/oidc/callback`
-                                                : `^http://.*:3001/api/auth/oidc/callback$`
-                                            }
-                                        />
-                                    </div>
+                        <div className="space-y-6 animate-in fade-in slide-in-from-top-2">
+                            <FormField label="Issuer URL">
+                                <div className="flex gap-2 items-start">
+                                    <SettingsInput
+                                        type="url"
+                                        value={settings.oidcIssuerUrl}
+                                        onChange={(val) => {
+                                            handleUpdate("oidcIssuerUrl", val);
+                                            setOidcValid(null);
+                                        }}
+                                        placeholder="https://auth.example.com/application/o/aurral/"
+                                        validateUrl
+                                        hint="Base URL of your IdP application."
+                                        wrapperClassName="flex-1"
+                                    />
+                                    <button
+                                        onClick={handleTestOidc}
+                                        disabled={testingOidc || !settings.oidcIssuerUrl}
+                                        className={`px-4 py-3 rounded-2xl font-bold text-sm transition-all flex items-center gap-2 ${oidcValid === true
+                                            ? "bg-green-500/10 text-green-500 hover:bg-green-500/20"
+                                            : oidcValid === false
+                                                ? "bg-red-500/10 text-red-500 hover:bg-red-500/20"
+                                                : "bg-primary-500/10 text-primary-500 hover:bg-primary-500/20"
+                                            }`}
+                                    >
+                                        {testingOidc ? <Loader className="w-4 h-4 animate-spin" /> :
+                                            oidcValid === true ? <CheckCircle className="w-4 h-4" /> :
+                                                oidcValid === false ? <AlertCircle className="w-4 h-4" /> :
+                                                    <Shield className="w-4 h-4" />}
+                                        {testingOidc ? "Testing..." : "Test"}
+                                    </button>
                                 </div>
+                            </FormField>
+
+                            <SettingsGrid cols={2}>
+                                <FormField label="Client ID">
+                                    <SettingsInput
+                                        value={settings.oidcClientId}
+                                        onChange={(val) => handleUpdate("oidcClientId", val)}
+                                        placeholder="aurral-client-id"
+                                    />
+                                </FormField>
+                                <FormField label="Client Secret">
+                                    <SettingsInput
+                                        type="password"
+                                        value={settings.oidcClientSecret}
+                                        onChange={(val) => handleUpdate("oidcClientSecret", val)}
+                                        placeholder="••••••••••••••••"
+                                    />
+                                </FormField>
+                            </SettingsGrid>
+
+                            {/* Collapsible Advanced Section */}
+                            <div className="pt-4 border-t border-gray-100 dark:border-gray-800">
+                                <CollapsibleSection
+                                    title="Advanced Overrides"
+                                    description="Only set these if auto-discovery fails or you need custom endpoints."
+                                    open={showAdvanced}
+                                    onToggle={() => setShowAdvanced(!showAdvanced)}
+                                >
+                                    <SettingsGrid cols={2} className="mt-4">
+                                        <FormField label="Auth URL" small>
+                                            <SettingsInput
+                                                value={settings.oidcAuthorizationUrl}
+                                                onChange={(val) => handleUpdate("oidcAuthorizationUrl", val)}
+                                                placeholder="Leave empty for auto-discovery"
+                                                className="text-xs py-2"
+                                            />
+                                        </FormField>
+                                        <FormField label="Token URL" small>
+                                            <SettingsInput
+                                                value={settings.oidcTokenUrl}
+                                                onChange={(val) => handleUpdate("oidcTokenUrl", val)}
+                                                placeholder="Leave empty for auto-discovery"
+                                                className="text-xs py-2"
+                                            />
+                                        </FormField>
+                                        <FormField label="User Info URL" small>
+                                            <SettingsInput
+                                                value={settings.oidcUserInfoUrl}
+                                                onChange={(val) => handleUpdate("oidcUserInfoUrl", val)}
+                                                placeholder="Leave empty for auto-discovery"
+                                                className="text-xs py-2"
+                                            />
+                                        </FormField>
+                                        <div className="space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest pl-1">Callback URL (Read Only)</label>
+                                                <CallbackTypeToggle value={callbackType} onChange={setCallbackType} />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                disabled
+                                                className="w-full bg-gray-100 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-700 rounded-xl py-2 px-3 text-xs text-gray-500 cursor-not-allowed font-mono"
+                                                value={callbackType === 'exact'
+                                                    ? `${window.location.protocol}//${window.location.hostname}:3001/api/auth/oidc/callback`
+                                                    : `^http://.*:3001/api/auth/oidc/callback$`
+                                                }
+                                            />
+                                        </div>
+                                    </SettingsGrid>
+                                </CollapsibleSection>
                             </div>
                         </div>
                     )}
                 </div>
-            </div>
+            </SettingsCard>
 
-            <div className="bg-white dark:bg-gray-900 rounded-3xl border border-gray-100 dark:border-gray-800 p-8 shadow-sm">
-                <h3 className="text-lg font-black text-gray-900 dark:text-white mb-6">Default User Settings</h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-8">Set the default permissions for all newly created users.</p>
+            {/* Default Permissions */}
+            <SettingsCard>
+                <SettingsSectionTitle>Default User Permissions</SettingsSectionTitle>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 -mt-4">Set the default permissions for all newly created users.</p>
 
-                <div className="space-y-4">
-                    {[
-                        { id: 'request', label: 'Request', desc: 'Allows users to submit new music requests.' },
-                        { id: 'auto_approve', label: 'Auto-Approve', desc: 'Automatically approves any requests made by the user.' },
-                        { id: 'manage_requests', label: 'Manage Requests', desc: 'Allows users to approve or deny requests from others.' },
-                        { id: 'manage_users', label: 'Manage Users', desc: 'Allows users to create and edit other users.' },
-                    ].map((perm) => (
-                        <label key={perm.id} className="group flex items-center justify-between p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition-all cursor-pointer border border-transparent hover:border-primary-500/20">
-                            <div className="flex flex-col">
-                                <span className="font-bold text-gray-900 dark:text-white">{perm.label}</span>
-                                <span className="text-xs text-gray-500 dark:text-gray-400">{perm.desc}</span>
-                            </div>
-                            <div className="relative">
-                                <input
-                                    type="checkbox"
-                                    className="sr-only peer"
-                                    checked={settings.defaultPermissions?.includes(perm.id)}
-                                    onChange={(e) => {
-                                        const current = settings.defaultPermissions || [];
-                                        const updated = e.target.checked
-                                            ? [...current, perm.id]
-                                            : current.filter(p => p !== perm.id);
-                                        handleUpdate("defaultPermissions", updated);
-                                    }}
-                                />
-                                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500"></div>
-                            </div>
-                        </label>
+                <div className="space-y-3">
+                    {permissions.map((perm) => (
+                        <PermissionRow
+                            key={perm.id}
+                            label={perm.label}
+                            description={perm.desc}
+                            checked={settings.defaultPermissions?.includes(perm.id)}
+                            onChange={(checked) => handlePermissionToggle(perm.id, checked)}
+                        />
                     ))}
                 </div>
-            </div>
+            </SettingsCard>
         </section>
+    );
+}
+
+// Helper Components
+function CollapsibleSection({ title, description, open, onToggle, children }) {
+    return (
+        <>
+            <button
+                type="button"
+                onClick={onToggle}
+                className="flex items-center justify-between w-full text-left group"
+            >
+                <div>
+                    <h5 className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                        {title}
+                    </h5>
+                    <p className="text-xs text-gray-500">{description}</p>
+                </div>
+                <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 group-hover:bg-primary-100 dark:group-hover:bg-primary-900/20 transition-colors">
+                    {open ? (
+                        <ChevronUp className="w-4 h-4 text-gray-500 group-hover:text-primary-600" />
+                    ) : (
+                        <ChevronDown className="w-4 h-4 text-gray-500 group-hover:text-primary-600" />
+                    )}
+                </div>
+            </button>
+            {open && (
+                <div className="animate-in fade-in slide-in-from-top-2 duration-200">
+                    {children}
+                </div>
+            )}
+        </>
+    );
+}
+
+function CallbackTypeToggle({ value, onChange }) {
+    return (
+        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+            {['exact', 'regex'].map((type) => (
+                <button
+                    key={type}
+                    type="button"
+                    onClick={() => onChange(type)}
+                    className={`px-2 py-0.5 text-[10px] font-bold rounded-md transition-all capitalize ${value === type
+                        ? 'bg-white dark:bg-gray-700 text-primary-500 shadow-sm'
+                        : 'text-gray-400 hover:text-gray-300'
+                        }`}
+                >
+                    {type}
+                </button>
+            ))}
+        </div>
+    );
+}
+
+function PermissionRow({ label, description, checked, onChange }) {
+    return (
+        <label className="group flex items-center justify-between p-4 rounded-2xl bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition-all cursor-pointer border border-transparent hover:border-primary-500/20">
+            <div className="flex flex-col">
+                <span className="font-bold text-gray-900 dark:text-white">{label}</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{description}</span>
+            </div>
+            <div className="relative">
+                <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={checked || false}
+                    onChange={(e) => onChange(e.target.checked)}
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none dark:bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary-500"></div>
+            </div>
+        </label>
     );
 }

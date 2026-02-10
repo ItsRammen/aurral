@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { Search, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import Sidebar from "./Sidebar";
+import SearchTypeahead from "./SearchTypeahead";
 import { usePlayer } from "../contexts/PlayerContext";
 
 function Layout({ children, isHealthy, lidarrConfigured, lidarrStatus }) {
-  const [searchQuery, setSearchQuery] = useState("");
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
@@ -14,14 +14,6 @@ function Layout({ children, isHealthy, lidarrConfigured, lidarrStatus }) {
   useEffect(() => {
     setIsSidebarOpen(false);
   }, [location.pathname]);
-
-  const handleSearch = (e) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      navigate(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
-      setSearchQuery("");
-    }
-  };
 
   // Add padding when miniplayer is visible
   const hasActivePlayer = !!currentTrack;
@@ -46,18 +38,7 @@ function Layout({ children, isHealthy, lidarrConfigured, lidarrStatus }) {
             <Menu className="w-5 h-5" />
           </button>
 
-          <form onSubmit={handleSearch} className="relative flex-1">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-5 w-5 text-gray-400 dark:text-gray-500" />
-            </div>
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search artists or songs..."
-              className="block w-full pl-10 pr-4 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-shadow shadow-sm"
-            />
-          </form>
+          <SearchTypeahead />
         </header>
 
         <main className="flex-1 w-full max-w-[1600px] mx-auto p-4 md:p-8 lg:p-10">

@@ -17,7 +17,7 @@ const router = express.Router();
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Get Lidarr artists (with request metadata)
-router.get("/artists", async (req, res) => {
+router.get("/artists", async (req, res, next) => {
     try {
         const artists = await getCachedLidarrArtists();
         // Optimize: fetching all requests might be okay if not huge.
@@ -34,15 +34,12 @@ router.get("/artists", async (req, res) => {
 
         res.json(enrichedArtists);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to fetch Lidarr artists",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
 // Get Single Artist
-router.get("/artists/:id", async (req, res) => {
+router.get("/artists/:id", async (req, res, next) => {
     try {
         const { id } = req.params;
         const artist = await lidarrRequest(`/artist/${id}`);
@@ -57,15 +54,12 @@ router.get("/artists/:id", async (req, res) => {
             requestedByUserId: match ? match.requestedByUserId : null
         });
     } catch (error) {
-        res.status(error.response?.status || 500).json({
-            error: "Failed to fetch Lidarr artist",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
 // Lookup Artist by MBID
-router.get("/lookup/:mbid", async (req, res) => {
+router.get("/lookup/:mbid", async (req, res, next) => {
     try {
         const { mbid } = req.params;
 
@@ -92,13 +86,12 @@ router.get("/lookup/:mbid", async (req, res) => {
             request: activeRequest || null
         });
     } catch (error) {
-        console.error("Lidarr lookup error:", error);
-        res.status(500).json({ error: "Lookup failed" });
+        next(error);
     }
 });
 
 // Get Recent Artists
-router.get("/recent", async (req, res) => {
+router.get("/recent", async (req, res, next) => {
     try {
         const artists = await getCachedLidarrArtists();
         const recent = [...artists]
@@ -118,15 +111,12 @@ router.get("/recent", async (req, res) => {
 
         res.json(enrichedRecent);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to fetch recent artists",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
 // Proxy for Lidarr media covers
-router.get("/mediacover/:artistId/:filename", async (req, res) => {
+router.get("/mediacover/:artistId/:filename", async (req, res, next) => {
     try {
         const { artistId, filename } = req.params;
         const coverType = filename.split(".")[0];
@@ -150,12 +140,19 @@ router.get("/mediacover/:artistId/:filename", async (req, res) => {
         res.setHeader("Content-Type", "image/jpeg");
         res.send(imageResponse.data);
     } catch (error) {
-        res.status(404).json({ error: "Image not found" });
+        // For media proxy, 404 is common and acceptable to handle nicely, but next(error) works too 
+        // if we have a robust handler. 
+        // However, standard handler might log it as error. 
+        // Let's keep specific 404 response for images to avoid log noise?
+        // Or just next(error) and let handler decide.
+        // Given it's a proxy, let's stick to next(error) but maybe with a specific error type if we wanted.
+        // For now, next(error) is consistent.
+        next(error);
     }
 });
 
 // Library Stats
-router.get("/library/stats", async (req, res) => {
+router.get("/library/stats", async (req, res, next) => {
     try {
         const artists = await getCachedLidarrArtists();
 
@@ -219,13 +216,12 @@ router.get("/library/stats", async (req, res) => {
             topStorage
         });
     } catch (error) {
-        console.error("Library stats error:", error);
-        res.status(500).json({ error: "Failed to calculate library stats" });
+        next(error);
     }
 });
 
-// Update monitored status for albums
-router.post("/albums/monitor", async (req, res) => {
+// Update monitored status for albums (Admin only)
+router.post("/albums/monitor", requirePermission("admin"), async (req, res, next) => {
     try {
         const { albumIds, monitored } = req.body;
         if (!albumIds || !Array.isArray(albumIds)) {
@@ -237,15 +233,12 @@ router.post("/albums/monitor", async (req, res) => {
         });
         res.json(result);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to update albums monitoring",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
-// Delete Artist
-router.delete("/artists/:id", async (req, res) => {
+// Delete Artist (Admin only)
+router.delete("/artists/:id", requirePermission("admin"), async (req, res, next) => {
     try {
         const { id } = req.params;
         const { deleteFiles = false } = req.query;
@@ -255,71 +248,57 @@ router.delete("/artists/:id", async (req, res) => {
 
         res.json({ success: true, message: "Artist deleted successfully" });
     } catch (error) {
-        res.status(error.response?.status || 500).json({
-            error: "Failed to delete artist from Lidarr",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
-// Update Artist
-router.put("/artists/:id", async (req, res) => {
+// Update Artist (Admin only)
+router.put("/artists/:id", requirePermission("admin"), async (req, res, next) => {
     try {
         const { id } = req.params;
         const result = await lidarrRequest(`/artist/${id}`, "PUT", req.body);
+        invalidateLidarrCache();
         res.json(result);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to update artist in Lidarr",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
 
 // Get Root Folders
-router.get("/rootfolder", async (req, res) => {
+router.get("/rootfolder", async (req, res, next) => {
     try {
         const rootFolders = await lidarrRequest("/rootfolder");
         res.json(rootFolders);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to fetch root folders",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
 
 // Get Quality Profiles
-router.get("/qualityprofile", async (req, res) => {
+router.get("/qualityprofile", async (req, res, next) => {
     try {
         const profiles = await lidarrRequest("/qualityprofile");
         res.json(profiles);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to fetch quality profiles",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
 // Get Metadata Profiles
-router.get("/metadataprofile", async (req, res) => {
+router.get("/metadataprofile", async (req, res, next) => {
     try {
         const profiles = await lidarrRequest("/metadataprofile");
         res.json(profiles);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to fetch metadata profiles",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
 
 // Batch Lookup
-router.post("/lookup/batch", async (req, res) => {
+router.post("/lookup/batch", async (req, res, next) => {
     try {
         const { mbids } = req.body;
         if (!Array.isArray(mbids)) {
@@ -336,15 +315,12 @@ router.post("/lookup/batch", async (req, res) => {
 
         res.json(results);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to batch lookup artists in Lidarr",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
 // Add Artist
-router.post("/artists", requirePermission("request"), async (req, res) => {
+router.post("/artists", requirePermission("request"), async (req, res, next) => {
     try {
         const {
             foreignArtistId,
@@ -403,7 +379,8 @@ router.post("/artists", requirePermission("request"), async (req, res) => {
             metadataProfile = metadataProfiles[0].id;
         }
 
-        const monitor = req.body.monitor || (req.body.albums?.length > 0 ? "none" : "all");
+        // Respect explicit monitor value from frontend, default to "none" for clarity
+        const monitor = req.body.monitor ?? "none";
 
         const artistData = {
             foreignArtistId,
@@ -524,17 +501,13 @@ router.post("/artists", requirePermission("request"), async (req, res) => {
         invalidateLidarrCache();
         res.status(201).json(isAuthorized ? result : { message: "Request submitted for approval", pending: true });
     } catch (error) {
-        res.status(error.response?.status || 500).json({
-            error: "Failed to add artist to Lidarr",
-            message: error.response?.data?.message || error.message,
-            details: error.response?.data,
-        });
+        next(error);
     }
 });
 
 
 // Get Albums
-router.get("/albums", async (req, res) => {
+router.get("/albums", async (req, res, next) => {
     try {
         const { artistId } = req.query;
         if (!artistId) {
@@ -543,15 +516,12 @@ router.get("/albums", async (req, res) => {
         const albums = await lidarrRequest(`/album?artistId=${artistId}`);
         res.json(albums);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to fetch albums from Lidarr",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
 // Get Tracks
-router.get("/tracks", async (req, res) => {
+router.get("/tracks", async (req, res, next) => {
     try {
         const { albumId } = req.query;
         if (!albumId) {
@@ -577,29 +547,23 @@ router.get("/tracks", async (req, res) => {
 
         res.json(enrichedTracks);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to fetch tracks from Lidarr",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
-// Update Album
-router.put("/albums/:id", async (req, res) => {
+// Update Album (Admin only)
+router.put("/albums/:id", requirePermission("admin"), async (req, res, next) => {
     try {
         const { id } = req.params;
         const result = await lidarrRequest(`/album/${id}`, "PUT", req.body);
         res.json(result);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to update album in Lidarr",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
-// Album Search Command
-router.post("/command/albumsearch", async (req, res) => {
+// Album Search Command (Admin only)
+router.post("/command/albumsearch", requirePermission("admin"), async (req, res, next) => {
     try {
         const { albumIds } = req.body;
         if (!albumIds || !Array.isArray(albumIds)) {
@@ -613,56 +577,43 @@ router.post("/command/albumsearch", async (req, res) => {
         });
         res.json(result);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to trigger album search",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
-// General Command
-router.post("/command", async (req, res) => {
+// General Command (Admin only)
+router.post("/command", requirePermission("admin"), async (req, res, next) => {
     try {
         const result = await lidarrRequest("/command", "POST", req.body);
         res.json(result);
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to execute Lidarr command",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
-// Delete Artist
-router.delete("/artists/:id", async (req, res) => {
+// Get download queue progress with stuck detection
+router.get("/queue/progress", async (req, res, next) => {
     try {
-        const { id } = req.params;
-        const { deleteFiles = false } = req.query;
-
-        await lidarrRequest(`/artist/${id}?deleteFiles=${deleteFiles}`, "DELETE");
-        invalidateLidarrCache();
-
-        res.json({ success: true, message: "Artist deleted successfully" });
+        const { getQueueProgress } = await import("../services/downloadTracker.js");
+        const progress = await getQueueProgress();
+        res.json(progress);
     } catch (error) {
-        res.status(error.response?.status || 500).json({
-            error: "Failed to delete artist from Lidarr",
-            message: error.message,
-        });
+        next(error);
     }
 });
 
-// Update Artist
-router.put("/artists/:id", async (req, res) => {
+// Manually retry a stuck download
+router.post("/queue/:id/retry", async (req, res, next) => {
     try {
-        const { id } = req.params;
-        const result = await lidarrRequest(`/artist/${id}`, "PUT", req.body);
-        invalidateLidarrCache();
-        res.json(result);
+        const { manualRetry } = await import("../services/downloadTracker.js");
+        const result = await manualRetry(parseInt(req.params.id));
+        if (result.success) {
+            res.json(result);
+        } else {
+            res.status(400).json(result);
+        }
     } catch (error) {
-        res.status(500).json({
-            error: "Failed to update artist in Lidarr",
-            message: error.message,
-        });
+        next(error);
     }
 });
 

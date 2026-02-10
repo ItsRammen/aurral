@@ -10,12 +10,14 @@ export const authMiddleware = async (req, res, next) => {
     // Debug logging to trace requests
     // console.log(`🔍 AuthMiddleware: ${req.method} ${req.path}`);
 
+    // Allow unauthenticated access to these endpoints
     if (
         req.path === "/api/health" ||
         req.path === "/api/auth/login" ||
         req.path === "/api/auth/init" ||
         req.path === "/api/auth/config" ||
-        req.path.startsWith("/api/auth/oidc")
+        req.path.startsWith("/api/auth/oidc") ||
+        /^\/api\/artists\/[0-9a-f-]+\/image$/.test(req.path) // Image proxy endpoint
     ) {
         return next();
     }

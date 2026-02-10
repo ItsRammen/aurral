@@ -61,55 +61,75 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login, setUser, checkAuthStatus } = useAuth();
+  const { login, checkAuthStatus } = useAuth(); // removed setUser, unused directly
 
-  // Auth Config State
-  const [oidcEnabled, setOidcEnabled] = useState(() => {
-    return localStorage.getItem('auth_idp_enabled') === 'true';
-  });
-  const [configLoaded, setConfigLoaded] = useState(() => {
-    return localStorage.getItem('auth_idp_enabled') !== null;
-  });
+  // --- Optimistic State Initialization ---
+  // Read from local storage immediately to prevent flicker
+  const getStoredConfig = () => localStorage.getItem('auth_idp_enabled') === 'true';
+  const hasStoredConfig = () => localStorage.getItem('auth_idp_enabled') !== null;
+
+  const [oidcEnabled, setOidcEnabled] = useState(getStoredConfig);
+  const [showPasswordForm, setShowPasswordForm] = useState(!getStoredConfig());
+
+  // Only show loading skeleton if we have NO config (fresh visit)
+  const [isInitializing, setIsInitializing] = useState(!hasStoredConfig());
   const [ssoLoading, setSsoLoading] = useState(false);
-
-  // View State (Toggle between SSO and Password)
-  // Default to password if no SSO, or SSO if available
-  const [showPasswordForm, setShowPasswordForm] = useState(!oidcEnabled);
 
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    // Check for OIDC token in URL
+    // 1. Handle URL Tokens (OIDC Callback)
     const params = new URLSearchParams(location.search);
     const token = params.get('token');
     const errorMsg = params.get('error');
 
     if (errorMsg) {
-      console.error("❌ Login Error Parameter:", errorMsg);
+      // Clear URL params effectively
+      navigate('/', { replace: true });
       setError(errorMsg === 'oidc_failed' ? 'SSO Login Failed' : errorMsg);
     }
 
     if (token) {
       localStorage.setItem('auth_token', token);
-      // Use checkAuthStatus to properly update both user and isAuthenticated state
-      checkAuthStatus().then(() => {
-        navigate('/');
-      }).catch(() => setError('Failed to verify token'));
+      checkAuthStatus()
+        .then(() => navigate('/', { replace: true }))
+        .catch(() => setError('Failed to verify token'));
+      return; // Stop here if processing token
     }
 
-    // Check OIDC config
-    api.get('/auth/config').then(res => {
-      const enabled = res.data.oidcEnabled;
-      setOidcEnabled(enabled);
-      localStorage.setItem('auth_idp_enabled', enabled);
-      // If we haven't manually toggled, set view based on availability
-      if (!showPasswordForm && !enabled) {
-        setShowPasswordForm(true);
+    // 2. Background Config Sync (Non-blocking)
+    const syncConfig = async () => {
+      try {
+        const res = await api.get('/auth/config');
+        const serverOidcEnabled = !!res.data.oidcEnabled;
+
+        // Only update if changed to avoid re-renders
+        if (serverOidcEnabled !== oidcEnabled) {
+          setOidcEnabled(serverOidcEnabled);
+          localStorage.setItem('auth_idp_enabled', serverOidcEnabled);
+
+          // Auto-switch view based on capability
+          if (serverOidcEnabled && showPasswordForm) {
+            // Optional: Don't force switch if user is already typing? 
+            // For now, let's respect the "toggle" nature. 
+            // If they are on password form, keep them there unless they explicitly switch?
+            // User Request: "keeps in sync for what options are enabled or not"
+            // If OIDC gets ENABLED, we should probably show the button option.
+            setShowPasswordForm(false); // Switch to SSO view as primary
+          } else if (!serverOidcEnabled) {
+            setShowPasswordForm(true); // Must show password form if SSO disabled
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to sync auth config", err);
+      } finally {
+        setIsInitializing(false);
       }
-    }).catch(() => { })
-      .finally(() => setConfigLoaded(true));
-  }, [location, setUser, navigate]);
+    };
+
+    syncConfig();
+  }, [location, navigate, checkAuthStatus]); // Removed oidcEnabled dependency to avoid loops
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -118,9 +138,7 @@ const Login = () => {
 
     const result = await login(username, password);
 
-    if (result.success) {
-      // Redirect handled by AuthContext
-    } else {
+    if (!result.success) {
       setError(result.error || 'Invalid credentials');
     }
     setLoading(false);
@@ -128,6 +146,7 @@ const Login = () => {
 
   const handleSSOLogin = () => {
     setSsoLoading(true);
+    // Use window.location for full redirect to backend
     window.location.href = '/api/auth/oidc';
   };
 
@@ -143,8 +162,8 @@ const Login = () => {
           <div className="absolute -inset-0.5 bg-gradient-to-b from-white/10 to-transparent rounded-3xl blur opacity-20 group-hover:opacity-30 transition duration-1000"></div>
           <div className="relative backdrop-blur-xl bg-gray-950/50 border border-white/5 rounded-3xl p-8 shadow-2xl ring-1 ring-white/5 min-h-[420px] flex flex-col justify-center">
 
-            {!configLoaded ? (
-              /* Loading Skeleton */
+            {isInitializing ? (
+              /* Loading Skeleton - Only seen on very first load */
               <div className="space-y-8 animate-pulse">
                 <div className="text-center space-y-3">
                   <div className="h-6 w-32 bg-white/10 rounded-lg mx-auto"></div>
@@ -181,6 +200,7 @@ const Login = () => {
 
                   {/* SSO Button (Primary if enabled & password hidden) */}
                   {oidcEnabled && !showPasswordForm && (
+                    /* ... Same SSO UI ... */
                     <div className="space-y-6 animate-in fade-in slide-in-from-right-4 duration-300">
                       <button
                         type="button"

@@ -5,6 +5,7 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('auth_token'));
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [needsSetup, setNeedsSetup] = useState(false);
@@ -19,7 +20,12 @@ export const AuthProvider = ({ children }) => {
   };
 
   const checkAuthStatus = async () => {
-    const token = localStorage.getItem('auth_token');
+    const storedToken = localStorage.getItem('auth_token');
+
+    // Sync state with storage if needed
+    if (storedToken !== token) {
+      setToken(storedToken);
+    }
 
     // Check if setup is needed
     try {
@@ -31,7 +37,7 @@ export const AuthProvider = ({ children }) => {
       console.error("Health check failed in AuthContext", e);
     }
 
-    if (token) {
+    if (storedToken) {
       try {
         const response = await api.get('/auth/me');
         setUser(response.data);
@@ -39,6 +45,7 @@ export const AuthProvider = ({ children }) => {
       } catch (e) {
         console.error("Auth verify failed:", e);
         localStorage.removeItem('auth_token');
+        setToken(null);
         setUser(null);
         setIsAuthenticated(false);
       }
@@ -54,9 +61,10 @@ export const AuthProvider = ({ children }) => {
   const login = async (username, password) => {
     try {
       const response = await api.post('/auth/login', { username, password });
-      const { token, user } = response.data;
+      const { token: newToken, user } = response.data;
 
-      localStorage.setItem('auth_token', token);
+      localStorage.setItem('auth_token', newToken);
+      setToken(newToken);
       setUser(user);
       setIsAuthenticated(true);
       return { success: true };
@@ -72,9 +80,10 @@ export const AuthProvider = ({ children }) => {
   const initSetup = async (username, password) => {
     try {
       const response = await api.post('/auth/init', { username, password });
-      const { token, user } = response.data;
+      const { token: newToken, user } = response.data;
 
-      localStorage.setItem('auth_token', token);
+      localStorage.setItem('auth_token', newToken);
+      setToken(newToken);
       setUser(user);
       setIsAuthenticated(true);
       // Removed: setNeedsSetup(false); - Keeps user on /setup for Step 2
@@ -89,6 +98,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     localStorage.removeItem('auth_token');
+    setToken(null);
     setUser(null);
     setIsAuthenticated(false);
     window.location.href = '/login';
@@ -103,6 +113,7 @@ export const AuthProvider = ({ children }) => {
   return (
     <AuthContext.Provider value={{
       user,
+      token,
       setUser,
       isAuthenticated,
       isLoading,
