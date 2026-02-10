@@ -47,6 +47,11 @@ coverage/
 *.temp
 .cache/
 backend/data/db.json
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite-journal
+*.sqlite-wal
 
 # Package manager locks (optional - uncomment if you want to ignore)
 # package-lock.json
