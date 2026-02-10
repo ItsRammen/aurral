@@ -5,63 +5,53 @@
 </p>
 
 <p align="center">
-  <strong>Streamlined Artist Request Manager for Lidarr</strong>
+  <strong>Streamlined Artist Request Manager & Discovery Platform for Lidarr</strong>
 </p>
 
 ---
 
 ## What is Aurral?
 
-Aurral is a simple web application that allows users to search for artists using the MusicBrainz database and seamlessly add them to their Lidarr music library. Think of it as an Overseerr or Jellyseerr, but specifically focused on music artists and Lidarr integration.
+Aurral is a modern web application that bridges the gap between music discovery, request management, and your **Lidarr** library. It allows users to search for artists, request them for download, and stream them via **Navidrome** integration—all in one unified interface.
 
-Aurral makes expanding your music collection effortless.
+Think of it as the missing link between *wanting* music (Discovery/Requests) and *listening* to music (Navidrome), powered by Lidarr's library management.
 
 ---
 
 ## Features
 
-### Search & Discovery
-- **Real-time Search:** Powered by the MusicBrainz API to find any artist in the world.
-- **Deep Metadata:** View artist types, countries, active years, genres, and aliases.
-- **Artist Details:** Explore full release groups (albums, EPs, singles) before adding them to your library.
+### 🔍 Search & Discovery
+- **Unified Search:** Search MusicBrainz, Last.fm, and your local Lidarr library simultaneously.
+- **Smart Recommendations:** "Personal Discovery" engine analyzes your requests and suggests similar artists.
+- **Trending & Popular:** See what's hot globally across Last.fm.
 
-### Advanced Recommendation Engine
-- **Personalized Discover:** Analyzes your existing Lidarr library to suggest similar artists.
-- **Genre Analysis:** Identifies your top genres and tags to help you explore new musical territories.
+### 📥 Request Management
+- **Seamless Lidarr Integration:** One-click requests that instantly add artists to Lidarr.
+- **Status Tracking:** Monitor specific albums/artists from "Pending" to "Downloading" to "Available".
+- **Quality Profiles:** Choose specific quality profiles (e.g., "Any", "Lossless") when requesting.
 
-### Library Management
-- **One-Click Requests:** Add artists to Lidarr with a single click.
-- **Library Overview:** Browse your entire Lidarr collection in a grid view.
-- **Status Tracking:** Visual indicators show what's already in your library and what's currently being requested.
+### 🎧 Streaming Integration
+- **Navidrome Status:** See if an artist is available to stream on your Navidrome server.
+- **Deep Links:** Jump directly to the artist in Navidrome or Lidarr.
 
----
-
-## Screenshots
-
-### Desktop Experience
-<p align="center">
-  <img src="frontend/images/desktop-discovery.webp" width="800" alt="Desktop Discovery View">
-</p>
-<p align="center">
-  <img src="frontend/images/desktop-library.webp" width="395" alt="Desktop Library View">
-  <img src="frontend/images/desktop-artist.webp" width="395" alt="Desktop Artist Details">
-</p>
-
-### Mobile Experience
-<p align="center">
-  <img src="frontend/images/mobile-discovery.webp" width="190" alt="Mobile Discovery">
-  <img src="frontend/images/mobile-discovery2.webp" width="190" alt="Mobile Discovery Alternate">
-  <img src="frontend/images/mobile-search.webp" width="190" alt="Mobile Search">
-  <img src="frontend/images/mobile-library.webp" width="190" alt="Mobile Library">
-</p>
+### 🛡️ Security & Administration
+- **OIDC Authentication:** Full support for OpenID Connect (Authentik, Keycloak, etc.).
+- **Role-Based Access:** Granular permissions for Admins vs. Standard Users.
+- **Issue Tracking:** Users can report metadata or audio issues directly within the app.
 
 ---
 
-## Quick Start
+## Documentation
 
-The fastest way to get Aurral running is using Docker Compose.
+Comprehensive documentation is available in the `docs/` directory:
+*   [**Project Overview**](docs/project_overview.md): System architecture and data flow.
+*   [**API Reference**](docs/api_reference.md): Detailed API endpoint map.
 
-### 1. Setup Environment
+---
+
+## Quick Start (Docker)
+
+### 1. Setup
 ```bash
 git clone https://github.com/lklynet/aurral.git
 cd aurral
@@ -69,83 +59,41 @@ cp .env.example .env
 ```
 
 ### 2. Configure
-Edit the `.env` file with your Lidarr details:
+Edit `.env` with your core settings:
 ```env
-LIDARR_URL=http://192.168.1.50:8686
-LIDARR_API_KEY=your_api_key_here
-CONTACT_EMAIL=your@email.com
+LIDARR_URL=http://your-lidarr-ip:8686
+LIDARR_API_KEY=your_api_key
+JWT_SECRET=secure-random-string
+SESSION_SECRET=another-secure-random-string
 ```
 
-### 3. Launch
+### 3. Run
 ```bash
 docker-compose up -d
 ```
-This will pull the latest pre-built images from the GitHub Container Registry (GHCR). Access the UI at `http://localhost:3000`.
+Access the UI at `http://localhost:3000`.
 
 ---
 
-## Installation
-
-### Prerequisites
-- **Lidarr:** A running instance with API access.
-- **Node.js:** v18 or later (for manual installs).
-- **Docker:** Recommended for production.
-
-### Manual Setup (Development)
-
-#### Docker (Recommended for Dev)
-If you want to build and run from source:
-```bash
-docker-compose -f docker-compose.dev.yml up --build
-```
-
-#### Local Node.js
-```bash
-cd backend
-npm install
-# Create/edit .env with Lidarr credentials
-npm start
-```
-
-#### Frontend
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
----
-
-## Discovery Engine
-
-Aurral features a discovery system that helps you find new music based on what you already love.
-
-### How it works:
-1. **Library Sampling:** The engine randomly samples artists from your current Lidarr collection.
-2. **Tag Analysis:** It queries MusicBrainz to find the specific sub-genres and tags associated with your artists (e.g., "Post-Punk", "Synthpop").
-3. **Similarity Search:** It looks for other bands matching those specific tag combinations.
-
----
-
-## Configuration
+## Configuration Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LIDARR_URL` | Full URL to your Lidarr instance | `http://localhost:8686` |
-| `LIDARR_API_KEY` | Your Lidarr API Key | `REQUIRED` |
-| `CONTACT_EMAIL` | Required for MusicBrainz API User-Agent | `REQUIRED` |
-| `PORT` | Backend API port | `3001` |
-| `LASTFM_API_KEY`| (Optional) For enhanced artist images & discovery | `null` |
-| `AUTH_PASSWORD` | (Optional) Password for basic authentication protection. Comma-separated for multiple passwords. | `null` |
+| `LIDARR_URL` | Full URL to your Lidarr instance | `required` |
+| `LIDARR_API_KEY` | Your Lidarr API Key | `required` |
+| `JWT_SECRET` | Secret for signing auth tokens | `change_me` |
+| `SESSION_SECRET` | Secret for session cookies | `change_me` |
+| `LASTFM_API_KEY` | (Optional) For artist images/bio | `null` |
+| `NODE_ENV` | `development` or `production` | `development` |
+
+*Note: OIDC and Navidrome settings are configured via the Web UI (Admin Settings).*
 
 ---
 
 ## Troubleshooting
 
-- **401 Unauthorized:** Check that your `LIDARR_API_KEY` is correct in the `.env` file.
-- **Connection Refused:** Ensure the `LIDARR_URL` is reachable from the container/server running Aurral.
-- **Slow Discovery:** The MusicBrainz API is rate-limited to 1 request per second. Aurral respects this limit, so discovery may take 10-20 seconds depending on library size.
-- **Missing Images:** Provide a `LASTFM_API_KEY` in your configuration for significantly better artist imagery coverage.
+- **OIDC 404:** Ensure your Issuer URL does not end in `.well-known/...`. Just the base issuer URL is needed.
+- **Missing Images:** Get a free API key from Last.fm and add it to `.env` or Settings for rich artist artwork.
 
 ---
 
