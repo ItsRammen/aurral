@@ -7,6 +7,7 @@ import {
   getLidarrMetadataProfiles,
   addArtistToLidarr,
   getAppSettings,
+  getArtistDetails,
 } from "../utils/api";
 import LoadingSpinner from "./LoadingSpinner";
 
@@ -29,11 +30,13 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
   // Selection mode: "artist-only" | "all" | "custom" | null
   const [selectionMode, setSelectionMode] = useState(null);
 
+  const [fullArtist, setFullArtist] = useState(artist);
+
   // Group releases by type
   const releaseGroups = useMemo(() => {
-    if (!artist?.["release-groups"]) return { albums: [], singlesEps: [], other: [] };
+    if (!fullArtist?.["release-groups"]) return { albums: [], singlesEps: [], other: [] };
 
-    const sorted = [...artist["release-groups"]].sort((a, b) =>
+    const sorted = [...fullArtist["release-groups"]].sort((a, b) =>
       (b["first-release-date"] || "").localeCompare(a["first-release-date"] || "")
     );
 
@@ -42,7 +45,7 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
       singlesEps: sorted.filter(rg => ["Single", "EP"].includes(rg["primary-type"])),
       other: sorted.filter(rg => !["Album", "Single", "EP"].includes(rg["primary-type"]))
     };
-  }, [artist]);
+  }, [fullArtist]);
 
   const totalAlbums = releaseGroups.albums.length;
   const visibleAlbums = showAllAlbums ? releaseGroups.albums : releaseGroups.albums.slice(0, 5);
@@ -60,12 +63,31 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
       setError(null);
 
       try {
-        const [folders, quality, metadata, savedSettings] = await Promise.all([
+        const promises = [
           getLidarrRootFolders(),
           getLidarrQualityProfiles(),
           getLidarrMetadataProfiles(),
           getAppSettings(),
-        ]);
+        ];
+
+        // If artist details are missing release groups, fetch them
+        let fetchedArtist = null;
+        if (!artist["release-groups"]) {
+          promises.push(getArtistDetails(artist.id).then(data => {
+            fetchedArtist = data;
+            return data;
+          }));
+        }
+
+        const results = await Promise.all(promises);
+        const folders = results[0];
+        const quality = results[1];
+        const metadata = results[2];
+        const savedSettings = results[3];
+
+        if (fetchedArtist) {
+          setFullArtist(prev => ({ ...prev, ...fetchedArtist }));
+        }
 
         setRootFolders(folders);
         setQualityProfiles(quality);
@@ -83,6 +105,7 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
         setSearchForMissingAlbums(savedSettings.searchForMissingAlbums ?? true);
         setAlbumFolders(savedSettings.albumFolders ?? true);
       } catch (err) {
+        console.error("Error loading modal data:", err);
         setError(
           err.response?.data?.message || "Failed to load configuration options",
         );
@@ -92,7 +115,7 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
     };
 
     fetchOptions();
-  }, []);
+  }, [artist]);
 
   // When selection mode changes, update album selection accordingly
   useEffect(() => {
@@ -140,7 +163,7 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
           albumsToSend = [];
         } else {
           monitorOption = "none"; // We're sending specific albums
-          albumsToSend = artist["release-groups"]
+          albumsToSend = fullArtist["release-groups"]
             .filter((rg) => selectedAlbums.has(rg.id))
             .map((rg) => ({ id: rg.id, title: rg.title }));
         }
@@ -260,8 +283,8 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
                   onClick={() => handleSelectMode("artist-only")}
                   disabled={submitting}
                   className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${selectionMode === "artist-only"
-                      ? "border-primary-500 bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500/50"
-                      : "border-gray-200 dark:border-gray-700 hover:border-primary-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    ? "border-primary-500 bg-primary-50 dark:bg-primary-900/20 ring-2 ring-primary-500/50"
+                    : "border-gray-200 dark:border-gray-700 hover:border-primary-300 hover:bg-gray-50 dark:hover:bg-gray-800"
                     }`}
                 >
                   <Music className={`w-8 h-8 mb-2 ${selectionMode === "artist-only" ? "text-primary-500" : "text-gray-400"}`} />
@@ -275,8 +298,8 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
                   onClick={() => handleSelectMode("all")}
                   disabled={submitting}
                   className={`flex flex-col items-center justify-center p-4 rounded-xl border-2 transition-all ${selectionMode === "all"
-                      ? "border-green-500 bg-green-50 dark:bg-green-900/20 ring-2 ring-green-500/50"
-                      : "border-gray-200 dark:border-gray-700 hover:border-green-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+                    ? "border-green-500 bg-green-50 dark:bg-green-900/20 ring-2 ring-green-500/50"
+                    : "border-gray-200 dark:border-gray-700 hover:border-green-300 hover:bg-gray-50 dark:hover:bg-gray-800"
                     }`}
                 >
                   <Disc className={`w-8 h-8 mb-2 ${selectionMode === "all" ? "text-green-500" : "text-gray-400"}`} />
@@ -332,8 +355,8 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
                       <label
                         key={rg.id}
                         className={`flex items-center p-2 rounded-lg cursor-pointer transition-colors ${selectedAlbums.has(rg.id)
-                            ? "bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800"
-                            : "hover:bg-gray-50 dark:hover:bg-gray-800"
+                          ? "bg-primary-50 dark:bg-primary-900/20 border border-primary-200 dark:border-primary-800"
+                          : "hover:bg-gray-50 dark:hover:bg-gray-800"
                           }`}
                       >
                         <input
@@ -384,8 +407,8 @@ function AddArtistModal({ artist, onClose, onSuccess }) {
                 onClick={handleSubmit}
                 disabled={submitting || !canSubmit}
                 className={`w-full h-12 rounded-lg font-semibold flex items-center justify-center transition-all ${canSubmit
-                    ? "btn btn-primary"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                  ? "btn btn-primary"
+                  : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 cursor-not-allowed"
                   }`}
               >
                 {submitting ? (

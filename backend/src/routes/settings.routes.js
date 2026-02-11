@@ -9,9 +9,22 @@ import { updateDiscoveryCache } from "../services/discovery.js";
 
 const router = express.Router();
 
-router.get("/", requirePermission("admin"), async (req, res, next) => {
+router.get("/", async (req, res, next) => {
     try {
         const settings = await loadSettings();
+
+        // If not admin, return only public/default settings to populated dropdowns
+        if (!req.user || !req.user.permissions.includes('admin')) {
+            return res.json({
+                rootFolderPath: settings.rootFolderPath,
+                qualityProfileId: settings.qualityProfileId,
+                metadataProfileId: settings.metadataProfileId,
+                searchForMissingAlbums: settings.searchForMissingAlbums,
+                albumFolders: settings.albumFolders,
+                monitored: settings.monitored
+            });
+        }
+
         res.json(settings);
     } catch (error) {
         next(error);

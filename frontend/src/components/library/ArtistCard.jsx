@@ -102,14 +102,13 @@ const ArtistCard = ({ artist, isLiked, onToggleLike, onDelete, isDeleting, isLik
                     {artist.artistName}
                 </h3>
 
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                    <div className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 p-2 rounded-xl">
-                        <Disc className="w-3.5 h-3.5 text-indigo-500" />
-                        <span>{artist.statistics?.albumCount || 0} Albums</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 p-2 rounded-xl">
+                <div className="mb-4">
+                    <div className="flex items-center justify-center gap-2 text-xs font-bold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 p-2 rounded-xl w-full">
                         <ListMusic className="w-3.5 h-3.5 text-purple-500" />
-                        <span>{artist.statistics?.trackCount || 0} Tracks</span>
+                        <span title="Available / Total Tracks">
+                            <span className="text-gray-900 dark:text-white">{artist.statistics?.trackFileCount || 0}</span>
+                            <span className="opacity-60">/{artist.statistics?.trackCount || 0}</span> Tracks
+                        </span>
                     </div>
                 </div>
 

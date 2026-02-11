@@ -1,25 +1,37 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import AudioPlayer from "react-h5-audio-player";
 import "react-h5-audio-player/lib/styles.css";
-import { X, Music } from "lucide-react";
+import { X, Music, Loader2 } from "lucide-react";
 import { usePlayer } from "../contexts/PlayerContext";
 import { useAuth } from "../contexts/AuthContext";
 
 function MiniPlayer() {
   const { currentTrack, audioRef, stop, playNext, setIsPlaying } = usePlayer();
   const { token } = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     // Auto-play when track changes
     if (currentTrack && audioRef.current?.audio?.current) {
-      audioRef.current.audio.current.play().catch(() => { });
+      setIsLoading(true);
+      const playPromise = audioRef.current.audio.current.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            setIsLoading(false);
+          })
+          .catch((e) => {
+            console.warn("Auto-play prevented:", e);
+            setIsLoading(false);
+            setIsPlaying(false);
+          });
+      }
     }
-  }, [currentTrack, audioRef]);
+  }, [currentTrack, audioRef, setIsPlaying]);
 
   if (!currentTrack) return null;
 
   // Get auth token for streaming URL (HTML5 audio can't use Authorization headers)
-  // const authToken = localStorage.getItem("auth_token");
   const authToken = token;
   const streamUrl = `/api/navidrome/stream/${currentTrack.id}?token=${encodeURIComponent(authToken || "")}`;
   const coverUrl = currentTrack.coverArt ? `${currentTrack.coverArt}?token=${encodeURIComponent(authToken || "")}` : null;
@@ -38,7 +50,14 @@ function MiniPlayer() {
       <div className="p-3">
         {/* Track Info Row */}
         <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex-shrink-0">
+          <div className="relative w-10 h-10 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800 flex-shrink-0 group">
+            {/* Loading Overlay */}
+            {isLoading && (
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center z-10 backdrop-blur-[1px]">
+                <Loader2 className="w-5 h-5 text-white animate-spin" />
+              </div>
+            )}
+
             {coverUrl ? (
               <img
                 src={coverUrl}
@@ -67,17 +86,25 @@ function MiniPlayer() {
             ref={audioRef}
             src={streamUrl}
             autoPlay
+            preload="auto"
             showJumpControls={false}
             showDownloadProgress={false}
             showFilledProgress
             layout="horizontal"
             customAdditionalControls={[]}
             customVolumeControls={[]}
-            onPlay={() => setIsPlaying(true)}
+            onPlay={() => {
+              setIsPlaying(true);
+              setIsLoading(false);
+            }}
             onPause={() => setIsPlaying(false)}
             onEnded={playNext}
+            onWaiting={() => setIsLoading(true)}
+            onCanPlay={() => setIsLoading(false)}
+            onEmptied={() => setIsLoading(true)}
             onError={(e) => {
               console.error("Audio error:", e);
+              setIsLoading(false);
             }}
           />
         </div>

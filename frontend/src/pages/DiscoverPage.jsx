@@ -56,6 +56,40 @@ function DiscoverPage() {
     return requests.filter(r => r.requestedByUserId === user?.id);
   }, [requests, user]);
 
+  /* Personal Refresh State */
+  const [personalRefreshing, setPersonalRefreshing] = useState(false);
+  const [cooldownTime, setCooldownTime] = useState(0);
+
+  useEffect(() => {
+    let interval;
+    if (cooldownTime > 0) {
+      interval = setInterval(() => {
+        setCooldownTime((prev) => Math.max(0, prev - 1));
+      }, 60000); // Updates every minute
+    }
+    return () => clearInterval(interval);
+  }, [cooldownTime]);
+
+  const handlePersonalRefresh = async () => {
+    if (personalRefreshing || cooldownTime > 0) return;
+    setPersonalRefreshing(true);
+    try {
+      await api.post("/discover/personal/refresh");
+      showSuccess("Started refreshing your recommendations.");
+      setCooldownTime(10); // 10 min cooldown
+    } catch (err) {
+      if (err.response?.status === 429) {
+        const retryAfter = err.response.data.retryAfter || 10;
+        setCooldownTime(retryAfter);
+        showError(err.response.data.message);
+      } else {
+        showError("Failed to refresh: " + (err.response?.data?.message || err.message));
+      }
+    } finally {
+      setPersonalRefreshing(false);
+    }
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
@@ -353,9 +387,16 @@ function DiscoverPage() {
     isUpdating,
   } = data || {};
 
+
+
   return (
     <div className="space-y-10 pb-12">
+      {/* ... Header Section (unchanged) ... */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-50 via-white to-primary-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 text-gray-900 dark:text-white shadow-sm dark:shadow-xl border border-primary-100/50 dark:border-transparent">
+        {/* ... (background blobs and title logic unchanged) ... */}
+        {/* I am relying on React structure here. Ideally I should target specific lines but since I need to inject state logic at top and button logic in JSX... */}
+        {/* Wait, I cannot modify functional component body easily with replace_file_content if I don't target the exact lines. I will use separate calls. */}
+
         <div className="absolute top-0 right-0 -mt-20 -mr-20 h-96 w-96 rounded-full bg-primary-500/10 dark:bg-primary-500/20 blur-3xl"></div>
         <div className="absolute bottom-0 left-0 -mb-20 -ml-20 h-96 w-96 rounded-full bg-blue-500/10 dark:bg-blue-500/20 blur-3xl"></div>
 
@@ -514,6 +555,15 @@ function DiscoverPage() {
                   <Sparkles className="w-6 h-6 mr-3 text-primary-500" />
                   Recommended for You
                 </h2>
+                <button
+                  onClick={handlePersonalRefresh}
+                  disabled={personalRefreshing || cooldownTime > 0}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750 transition-all text-gray-600 dark:text-gray-400 disabled:opacity-50"
+                  title={cooldownTime > 0 ? `Available in ${cooldownTime}m` : "Refresh Recommendations"}
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${personalRefreshing ? "animate-spin text-primary-500" : ""}`} />
+                  {personalRefreshing ? "Refreshing..." : cooldownTime > 0 ? `${cooldownTime}m` : "Refresh"}
+                </button>
               </div>
 
               {personalData?.recommendations?.length > 0 ? (
@@ -659,14 +709,16 @@ function DiscoverPage() {
                   <PlayCircle className="w-6 h-6 mr-3 text-primary-500" />
                   Aurral Library Suggestions
                 </h2>
-                <button
-                  onClick={handleRefreshDiscovery}
-                  disabled={refreshing || isUpdating}
-                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750 transition-all text-gray-600 dark:text-gray-400 disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${refreshing || isUpdating ? "animate-spin text-primary-500" : ""}`} />
-                  {refreshing || isUpdating ? "Refreshing..." : "Refresh"}
-                </button>
+                {user?.permissions?.includes("admin") && (
+                  <button
+                    onClick={handleRefreshDiscovery}
+                    disabled={refreshing || isUpdating}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs font-bold bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-750 transition-all text-gray-600 dark:text-gray-400 disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${refreshing || isUpdating ? "animate-spin text-primary-500" : ""}`} />
+                    {refreshing || isUpdating ? "Refreshing..." : "Global Refresh"}
+                  </button>
+                )}
               </div>
 
               {recommendations.length > 0 ? (

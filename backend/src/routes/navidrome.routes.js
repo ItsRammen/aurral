@@ -263,20 +263,29 @@ router.get("/stream/:trackId", async (req, res, next) => {
 
         const streamUrl = `${config.url}/rest/stream.view?u=${config.username}&t=${config.token}&s=${config.salt}&v=1.16.1&c=Aurral&id=${trackId}`;
 
+        const headers = {};
+        if (req.headers.range) {
+            headers['Range'] = req.headers.range;
+        }
+
         const response = await axios({
             method: 'GET',
             url: streamUrl,
+            headers: headers,
             responseType: 'stream',
-            timeout: 30000
+            timeout: 30000,
+            validateStatus: (status) => status >= 200 && status < 300
         });
 
-        if (response.headers['content-type']) {
-            res.setHeader('Content-Type', response.headers['content-type']);
-        }
-        if (response.headers['content-length']) {
-            res.setHeader('Content-Length', response.headers['content-length']);
-        }
+        // Forward important headers for streaming/scrubbing
+        const headersToForward = ['content-type', 'content-length', 'content-range', 'accept-ranges', 'cache-control'];
+        headersToForward.forEach(header => {
+            if (response.headers[header]) {
+                res.setHeader(header, response.headers[header]);
+            }
+        });
 
+        res.status(response.status);
         response.data.pipe(res);
     } catch (e) {
         console.error("Navidrome Stream Error:", e.message);

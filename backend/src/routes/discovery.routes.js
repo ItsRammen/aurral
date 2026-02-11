@@ -62,8 +62,53 @@ router.post("/discover/refresh", requirePermission("admin"), (req, res) => {
     });
 });
 
-// POST /api/discover/personal/refresh - Trigger personal update (Admin only)
-router.post("/discover/personal/refresh", requirePermission("admin"), (req, res) => {
+// Rate limiting map for personal refresh
+const personalRefreshCooldowns = new Map();
+
+// POST /api/discover/personal/refresh - Trigger personal update (User)
+router.post("/discover/personal/refresh", async (req, res) => {
+    const userId = req.user.id;
+    const now = Date.now();
+    const COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
+
+    // Admin bypass for cooldown? Optional, but let's enforce for all to prevents abuse/load
+    if (!req.user.permissions?.includes("admin")) {
+        const lastRefresh = personalRefreshCooldowns.get(userId);
+        if (lastRefresh && (now - lastRefresh) < COOLDOWN_MS) {
+            const remaining = Math.ceil((COOLDOWN_MS - (now - lastRefresh)) / 60000);
+            return res.status(429).json({
+                message: `Please wait ${remaining} minutes before refreshing again.`,
+                retryAfter: remaining
+            });
+        }
+    }
+
+    if (isPersonalUpdating) {
+        // Technically this flag tracks the GLOBAL "refresh all" job.
+        // Individual refreshes generally don't block each other unless we want to.
+        // But generatePersonalDiscovery handles concurrency for the *same* user.
+        // We'll let it slide unless the global job is running which might be heavy.
+        if (isPersonalUpdating) {
+            return res.status(409).json({
+                message: "System-wide update in progress, please try again later.",
+                isUpdating: true,
+            });
+        }
+    }
+
+    try {
+        personalRefreshCooldowns.set(userId, now);
+        // Force update
+        await generatePersonalDiscovery(userId, null, 20, true);
+        res.json({ message: "Recommendations refreshed" });
+    } catch (error) {
+        console.error("Personal refresh error:", error);
+        res.status(500).json({ error: "Failed to refresh recommendations" });
+    }
+});
+
+// POST /api/discover/personal/refresh-all - Trigger personal update for ALL users (Admin only)
+router.post("/discover/personal/refresh-all", requirePermission("admin"), (req, res) => {
     if (isPersonalUpdating) {
         return res.status(409).json({
             message: "Personal discovery update already in progress",
@@ -72,7 +117,7 @@ router.post("/discover/personal/refresh", requirePermission("admin"), (req, res)
     }
     refreshPersonalDiscoveryForAllUsers();
     res.json({
-        message: "Personal discovery update started",
+        message: "Personal discovery update started for all users",
         isUpdating: true,
     });
 });
