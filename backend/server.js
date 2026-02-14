@@ -58,16 +58,36 @@ app.use(helmet({
 }));
 app.use(express.json());
 
+// Trust Proxy Configuration
+// Must be set before session middleware for secure cookies to work behind proxies
+if (process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1') {
+  app.set('trust proxy', 1);
+} else {
+  // Default to 0 (disabled) unless explicitly enabled via ENV or settings later.
+  // Note: Express-session needs this set correctly for 'secure: auto' or 'secure: true' behind proxies.
+}
+
 // Session configuration for Passport
 app.use(session({
   secret: process.env.SESSION_SECRET || 'aurral_secret_session_key',
   resave: false,
-  saveUninitialized: true,
+  saveUninitialized: false, // Don't create session until something stored
   cookie: {
-    secure: process.env.NODE_ENV === 'production',
-    httpOnly: true
-  }
+    secure: process.env.NODE_ENV === 'production' || process.env.TRUST_PROXY === 'true',
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    sameSite: 'lax' // Required for OIDC redirects to work
+  },
+  // proxy: true // Let express-session look at req.protocol/trust proxy settings
 }));
+
+// Debug Middleware for Sessions (Temporary)
+app.use((req, res, next) => {
+  if (process.env.DEBUG === 'true') {
+    console.log(`[Session Debug] ${req.method} ${req.url} | SessionID: ${req.sessionID} | HasSession: ${!!req.session} | User: ${req.user?.id}`);
+  }
+  next();
+});
 
 app.use(passport.initialize());
 app.use(passport.session());
@@ -77,13 +97,6 @@ import authRoutes from "./src/routes/auth.routes.js";
 
 // Call initial configuration
 setTimeout(configurePassport, 2000);
-
-// Note: Passport serialization moved to src/config/passport.js but initialized here via configurePassport import side-effects? 
-// No, side effects (serialization) are run when the file is imported. We need to import it.
-// The configurePassport export handles the strategy. 
-// We should import the file for side effects (serialization) OR move serialization into configurePassport?
-// The new passport.js file has serialization at the top level. Importing it executes that.
-// So just importing it is enough.
 
 // Serve static files from the frontend build directory
 const frontendDistPath = path.join(process.cwd(), "frontend", "dist");
@@ -186,25 +199,6 @@ app.get("/api/health", async (req, res) => {
   });
 });
 
-// Routes extracted to src/routes/*.routes.js
-
-
-
-
-
-// Discovery and Scheduler logic moved to services/discovery.js and services/scheduler.js
-
-
-// [Routes moved to discovery.routes.js]
-
-
-
-
-
-// Serve static files from the frontend build directory
-// Static file serving moved to top
-
-
 app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   const settings = await loadSettings();
@@ -214,8 +208,14 @@ app.listen(PORT, async () => {
     console.log("Trust Proxy enabled (from settings).");
     app.set('trust proxy', 1);
   } else {
-    console.log("Trust Proxy disabled (default).");
-    app.set('trust proxy', 0);
+    // Check Config first, then Env fallback checked above
+    if (process.env.TRUST_PROXY === 'true' || process.env.TRUST_PROXY === '1') {
+      console.log("Trust Proxy enabled (from ENV).");
+      // Already set above
+    } else {
+      console.log("Trust Proxy disabled (default).");
+      app.set('trust proxy', 0);
+    }
   }
 
   console.log(`Lidarr URL (configured): ${settings.lidarrUrl || "http://localhost:8686"}`);
