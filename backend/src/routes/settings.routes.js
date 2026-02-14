@@ -6,6 +6,7 @@ import { requirePermission } from "../middleware/auth.js";
 import { probeLidarrUrl, loadSettings, LIDARR_URL, LIDARR_API_KEY, lastfmRequest } from "../services/api.js";
 import { restartDiscoverySchedule } from "../services/scheduler.js";
 import { updateDiscoveryCache } from "../services/discovery.js";
+import { PERMISSIONS } from "../config/permissions.js";
 
 const router = express.Router();
 
@@ -14,7 +15,7 @@ router.get("/", async (req, res, next) => {
         const settings = await loadSettings();
 
         // If not admin, return only public/default settings to populated dropdowns
-        if (!req.user || !req.user.permissions.includes('admin')) {
+        if (!req.user || !req.user.permissions.includes(PERMISSIONS.ADMIN)) {
             return res.json({
                 rootFolderPath: settings.rootFolderPath,
                 qualityProfileId: settings.qualityProfileId,
@@ -32,7 +33,7 @@ router.get("/", async (req, res, next) => {
 });
 
 // Get system statistics
-router.get("/system/stats", requirePermission("admin"), async (req, res, next) => {
+router.get("/system/stats", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     try {
         const fs = await import('fs/promises');
         const path = await import('path');
@@ -88,7 +89,7 @@ router.get("/system/stats", requirePermission("admin"), async (req, res, next) =
 });
 
 // Test Lidarr Connection
-router.post("/test-lidarr", requirePermission("admin"), async (req, res, next) => {
+router.post("/test-lidarr", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     const { lidarrUrl, lidarrApiKey } = req.body;
 
     if (!lidarrUrl || !lidarrApiKey) {
@@ -119,7 +120,7 @@ router.post("/test-lidarr", requirePermission("admin"), async (req, res, next) =
 });
 
 // Test Last.fm API Key
-router.post("/test-lastfm", requirePermission("admin"), async (req, res, next) => {
+router.post("/test-lastfm", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     const { lastfmApiKey } = req.body;
 
     if (!lastfmApiKey) {
@@ -152,7 +153,7 @@ router.post("/test-lastfm", requirePermission("admin"), async (req, res, next) =
     }
 });
 
-router.post("/", requirePermission("admin"), async (req, res, next) => {
+router.post("/", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     try {
         const updates = req.body;
 
@@ -165,7 +166,7 @@ router.post("/", requirePermission("admin"), async (req, res, next) => {
         // Merge updates (only updated fields)
         // Ensure defaultPermissions is array if present
         if (updates.defaultPermissions && !Array.isArray(updates.defaultPermissions)) {
-            updates.defaultPermissions = ["request"];
+            updates.defaultPermissions = [PERMISSIONS.REQUEST];
         }
         if (typeof updates.discoveryRefreshInterval !== 'undefined') {
             updates.discoveryRefreshInterval = parseInt(updates.discoveryRefreshInterval) || 24;
@@ -208,7 +209,7 @@ router.post("/", requirePermission("admin"), async (req, res, next) => {
 });
 
 // Test OIDC Connection
-router.post("/test-oidc", requirePermission("admin"), async (req, res, next) => {
+router.post("/test-oidc", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     const { issuerUrl } = req.body;
 
     if (!issuerUrl) {

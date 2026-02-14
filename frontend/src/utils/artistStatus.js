@@ -43,7 +43,7 @@ export const STATUS_CONFIG = {
     },
     partial: {
         key: "partial",
-        label: "Partial",
+        label: "Partially Complete",
         color: "yellow",
         bgClass: "bg-yellow-100 dark:bg-yellow-900/30",
         textClass: "text-yellow-700 dark:text-yellow-400",
@@ -172,15 +172,12 @@ export function getStatusLabel(status, stats) {
     }
 
     if (stats && status === "partial") {
-        const { trackFileCount = 0, trackCount = 0 } = stats;
-        if (trackCount > 0) {
-            return `${trackFileCount}/${trackCount} Tracks`;
-        }
+        return "Partially Complete";
     }
 
     if (stats && status === "complete") {
         // Removed misleading "X Albums Complete" as we don't know monitored album count
-        return "Collection Complete";
+        return "Monitored Complete";
     }
 
     return config.label;

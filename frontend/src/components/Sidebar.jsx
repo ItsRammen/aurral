@@ -14,10 +14,11 @@ import {
   User,
   AlertTriangle,
 } from "lucide-react";
-import { useTheme } from "../contexts/ThemeContext";
-import { useAuth } from "../contexts/AuthContext";
-import ProfileDropdown from "./ProfileDropdown";
+import { PERMISSIONS } from "../utils/permissions";
 import api from "../utils/api";
+import { useAuth } from "../contexts/AuthContext";
+import { useTheme } from "../contexts/ThemeContext";
+import ProfileDropdown from "./ProfileDropdown";
 
 function Sidebar({
   isHealthy,
@@ -58,8 +59,11 @@ function Sidebar({
     { path: "/issues", label: "Issues", icon: AlertTriangle, badge: issueCount },
   ];
 
-  if (hasPermission('admin')) {
+  if (hasPermission(PERMISSIONS.MANAGE_USERS)) {
     navItems.push({ path: "/users", label: "Users", icon: User });
+  }
+
+  if (hasPermission(PERMISSIONS.ADMIN)) {
     navItems.push({ path: "/settings", label: "Settings", icon: Settings });
   }
 

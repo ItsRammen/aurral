@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ROLES } from '../../utils/permissions';
 import { Shield, ChevronDown, ChevronUp, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { testOidcConnection } from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
@@ -19,21 +20,6 @@ export default function AuthTab({ settings, handleUpdate }) {
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [testingOidc, setTestingOidc] = useState(false);
     const [oidcValid, setOidcValid] = useState(null);
-
-    const permissions = [
-        { id: 'request', label: 'Request', desc: 'Allows users to submit new music requests.' },
-        { id: 'auto_approve', label: 'Auto-Approve', desc: 'Automatically approves any requests made by the user.' },
-        { id: 'manage_requests', label: 'Manage Requests', desc: 'Allows users to approve or deny requests from others.' },
-        { id: 'manage_users', label: 'Manage Users', desc: 'Allows users to create and edit other users.' },
-    ];
-
-    const handlePermissionToggle = (permId, checked) => {
-        const current = settings.defaultPermissions || [];
-        const updated = checked
-            ? [...current, permId]
-            : current.filter(p => p !== permId);
-        handleUpdate("defaultPermissions", updated);
-    };
 
     const handleTestOidc = async (e) => {
         e.preventDefault();
@@ -191,17 +177,19 @@ export default function AuthTab({ settings, handleUpdate }) {
 
             {/* Default Permissions */}
             <SettingsCard>
-                <SettingsSectionTitle>Default User Permissions</SettingsSectionTitle>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 -mt-4">Set the default permissions for all newly created users.</p>
+                <SettingsSectionTitle>Default User Role</SettingsSectionTitle>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 -mt-4">
+                    Choose the role assigned to new users when they first sign up or are created.
+                </p>
 
-                <div className="space-y-3">
-                    {permissions.map((perm) => (
-                        <PermissionRow
-                            key={perm.id}
-                            label={perm.label}
-                            description={perm.desc}
-                            checked={settings.defaultPermissions?.includes(perm.id)}
-                            onChange={(checked) => handlePermissionToggle(perm.id, checked)}
+                <div className="grid grid-cols-1 gap-3">
+                    {Object.entries(ROLES).map(([roleKey, rolePerms]) => (
+                        <RoleSelectionCard
+                            key={roleKey}
+                            label={roleKey.toLowerCase().replace('_', ' ')}
+                            permissions={rolePerms}
+                            currentPermissions={settings.defaultPermissions || []}
+                            onSelect={(perms) => handleUpdate("defaultPermissions", perms)}
                         />
                     ))}
                 </div>
@@ -211,6 +199,47 @@ export default function AuthTab({ settings, handleUpdate }) {
 }
 
 // Helper Components
+function RoleSelectionCard({ label, permissions, currentPermissions, onSelect }) {
+    // Check if current permissions match this role exactly
+    const isSelected =
+        currentPermissions.length === permissions.length &&
+        permissions.every(p => currentPermissions.includes(p));
+
+    return (
+        <button
+            type="button"
+            onClick={() => onSelect(permissions)}
+            className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${isSelected
+                ? "bg-primary-500/10 border-primary-500 ring-1 ring-primary-500"
+                : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                }`}
+        >
+            <div className="flex items-center gap-3">
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? "border-primary-500" : "border-gray-300 dark:border-gray-600"
+                    }`}>
+                    {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-primary-500" />}
+                </div>
+                <div>
+                    <span className="font-bold text-gray-900 dark:text-white capitalize block">
+                        {label}
+                    </span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 capitalize">
+                        {permissionSummary(permissions)}
+                    </span>
+                </div>
+
+            </div>
+            {isSelected && <CheckCircle className="w-5 h-5 text-primary-500" />}
+        </button>
+    );
+}
+
+function permissionSummary(perms) {
+    if (perms.length === 0) return "Read-only access";
+    if (perms.includes('admin')) return "Full system access";
+    return `${perms.length} permission${perms.length !== 1 ? 's' : ''}`;
+}
+
 function CollapsibleSection({ title, description, open, onToggle, children }) {
     return (
         <>

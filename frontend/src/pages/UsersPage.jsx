@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import LoadingSpinner from '../components/LoadingSpinner';
 import PageHeader from '../components/PageHeader';
+import { PERMISSIONS, ROLES } from '../utils/permissions';
 
 export default function UsersPage() {
     const [users, setUsers] = useState([]);
@@ -44,11 +45,11 @@ export default function UsersPage() {
     });
 
     const PERMISSION_OPTIONS = [
-        { value: 'admin', label: 'Admin', description: 'Full administrator access. Bypasses all other checks.' },
-        { value: 'manage_users', label: 'Manage Users', description: 'Grant permission to manage other users.' },
-        { value: 'manage_requests', label: 'Manage Requests', description: 'Manage and approve media requests.' },
-        { value: 'request', label: 'Request', description: 'Submit requests for new music.' },
-        { value: 'auto_approve', label: 'Auto-Approve', description: 'Automatic approval for music requests.' },
+        { value: PERMISSIONS.ADMIN, label: 'Admin', description: 'Full administrator access. Bypasses all other checks.' },
+        { value: PERMISSIONS.MANAGE_USERS, label: 'Manage Users', description: 'Grant permission to manage other users.' },
+        { value: PERMISSIONS.MANAGE_REQUESTS, label: 'Manage Requests', description: 'Manage and approve media requests.' },
+        { value: PERMISSIONS.REQUEST, label: 'Request', description: 'Submit requests for new music.' },
+        { value: PERMISSIONS.AUTO_APPROVE, label: 'Auto-Approve', description: 'Automatic approval for music requests.' },
     ];
 
     useEffect(() => {
@@ -272,14 +273,23 @@ export default function UsersPage() {
                                         </td>
                                         <td className="px-6 py-4 text-sm font-medium">
                                             <div className="flex gap-2">
-                                                {user.permissions.map(p => (
-                                                    <span
-                                                        key={p}
-                                                        className={`capitalize ${p === 'admin' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-600 dark:text-gray-400'}`}
-                                                    >
-                                                        {p.replace('_', ' ')}
-                                                    </span>
-                                                ))}
+                                                <div className="flex gap-2">
+                                                    {(() => {
+                                                        const role = Object.entries(ROLES).find(([key, val]) =>
+                                                            val.length === user.permissions.length &&
+                                                            val.every(p => user.permissions.includes(p))
+                                                        );
+                                                        return role ? (
+                                                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                                                                {role[0]}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                                                                Custom
+                                                            </span>
+                                                        );
+                                                    })()}
+                                                </div>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4">
@@ -301,7 +311,7 @@ export default function UsersPage() {
                                                         className={`btn border border-gray-200 dark:border-gray-700 px-3 py-1.5 text-xs font-bold uppercase transition-all ${user.authType === 'oidc'
                                                             ? 'opacity-50 cursor-not-allowed hover:bg-transparent hover:border-gray-200 dark:hover:border-gray-700'
                                                             : 'hover:bg-red-500 hover:border-red-500 hover:text-white'}`}
-                                                        disabled={(user.permissions.includes('admin') && users.filter(u => u.permissions.includes('admin')).length <= 1) || user.authType === 'oidc'}
+                                                        disabled={(user.permissions.includes(PERMISSIONS.ADMIN) && users.filter(u => u.permissions.includes(PERMISSIONS.ADMIN)).length <= 1) || user.authType === 'oidc'}
                                                     >
                                                         Delete
                                                     </button>
@@ -445,7 +455,7 @@ export default function UsersPage() {
                                                     <div className="space-y-2">
                                                         <label className="text-xs font-bold uppercase tracking-wider text-gray-400">Role</label>
                                                         <div className="p-3 bg-gray-100 dark:bg-gray-800/50 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm">
-                                                            {formData.permissions.includes('admin') ? 'Administrator' : 'Aurral User'}
+                                                            {formData.permissions.includes(PERMISSIONS.ADMIN) ? 'Administrator' : 'Aurral User'}
                                                         </div>
                                                     </div>
                                                     <div className="space-y-2">
@@ -527,30 +537,81 @@ export default function UsersPage() {
                                             <div className="space-y-6 animate-fade-in">
                                                 <h4 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Access Permissions</h4>
 
-                                                <div className="space-y-4">
-                                                    {PERMISSION_OPTIONS.map(opt => (
-                                                        <div
-                                                            key={opt.value}
-                                                            className={`flex items-start gap-4 p-4 rounded-xl border transition-all cursor-pointer ${formData.permissions.includes(opt.value)
-                                                                ? "bg-primary-500/5 border-primary-500/30"
-                                                                : "bg-gray-800/20 border-gray-800 hover:border-gray-700"
-                                                                }`}
-                                                            onClick={() => togglePermission(opt.value)}
-                                                        >
-                                                            <div className="pt-1">
-                                                                <div className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${formData.permissions.includes(opt.value)
-                                                                    ? "bg-primary-500 border-primary-500 text-white"
-                                                                    : "border-gray-600 bg-transparent"
-                                                                    }`}>
-                                                                    {formData.permissions.includes(opt.value) && <Check className="w-3.5 h-3.5" />}
+                                                {/* Role Selector */}
+                                                <div className="space-y-4 mb-8">
+                                                    <label className="text-xs font-bold uppercase tracking-wider text-gray-400">User Role</label>
+                                                    <div className="grid grid-cols-1 gap-3">
+                                                        {Object.entries(ROLES).map(([roleKey, rolePerms]) => {
+                                                            const isSelected =
+                                                                formData.permissions.length === rolePerms.length &&
+                                                                rolePerms.every(p => formData.permissions.includes(p));
+
+                                                            return (
+                                                                <button
+                                                                    key={roleKey}
+                                                                    type="button"
+                                                                    onClick={() => setFormData(prev => ({ ...prev, permissions: [...rolePerms] }))}
+                                                                    className={`flex items-center justify-between p-4 rounded-xl border text-left transition-all ${isSelected
+                                                                            ? "bg-primary-500/10 border-primary-500 ring-1 ring-primary-500"
+                                                                            : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                                                                        }`}
+                                                                >
+                                                                    <div className="flex items-center gap-3">
+                                                                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? "border-primary-500" : "border-gray-300 dark:border-gray-600"
+                                                                            }`}>
+                                                                            {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-primary-500" />}
+                                                                        </div>
+                                                                        <span className="font-bold text-gray-900 dark:text-white capitalize">
+                                                                            {roleKey.toLowerCase().replace('_', ' ')}
+                                                                        </span>
+                                                                    </div>
+                                                                    {isSelected && <Check className="w-5 h-5 text-primary-500" />}
+                                                                </button>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+
+                                                {/* Advanced Toggle */}
+                                                <div className="border-t border-gray-100 dark:border-gray-800 pt-6">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            const el = document.getElementById('advanced-perms');
+                                                            el.classList.toggle('hidden');
+                                                        }}
+                                                        className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-400 hover:text-primary-500 transition-colors"
+                                                    >
+                                                        <Settings className="w-4 h-4" />
+                                                        Advanced: Custom Permissions
+                                                    </button>
+
+                                                    <div id="advanced-perms" className="hidden mt-4 space-y-4 animate-in fade-in slide-in-from-top-2">
+                                                        {PERMISSION_OPTIONS.map(opt => (
+                                                            <div
+                                                                key={opt.value}
+                                                                className={`flex items-start gap-4 p-4 rounded-xl border transition-all cursor-pointer ${formData.permissions.includes(opt.value)
+                                                                    ? "bg-primary-500/5 border-primary-500/30"
+                                                                    : "bg-gray-800/20 border-gray-800 hover:border-gray-700"
+                                                                    }`}
+                                                                onClick={() => togglePermission(opt.value)}
+                                                            >
+                                                                <div className="pt-1">
+                                                                    <div className={`w-5 h-5 rounded border flex items-center justify-center transition-all ${formData.permissions.includes(opt.value)
+                                                                        ? "bg-primary-500 border-primary-500 text-white"
+                                                                        : "border-gray-600 bg-transparent"
+                                                                        }`}>
+                                                                        {formData.permissions.includes(opt.value) && <Check className="w-3.5 h-3.5" />}
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <div className="font-bold text-gray-900 dark:text-white text-sm mb-1">{opt.label}</div>
+                                                                    <p className="text-xs text-gray-500">{opt.description}</p>
                                                                 </div>
                                                             </div>
-                                                            <div>
-                                                                <div className="font-bold text-gray-900 dark:text-white text-sm mb-1">{opt.label}</div>
-                                                                <p className="text-xs text-gray-500">{opt.description}</p>
-                                                            </div>
-                                                        </div>
-                                                    ))}
+                                                        ))}
+                                                    </div>
                                                 </div>
                                             </div>
                                         )}

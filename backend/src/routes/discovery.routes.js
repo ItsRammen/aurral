@@ -15,6 +15,7 @@ import {
     LASTFM_API_KEY
 } from "../services/api.js";
 import { requirePermission } from "../middleware/auth.js";
+import { PERMISSIONS } from "../config/permissions.js";
 
 const router = express.Router();
 
@@ -48,7 +49,7 @@ router.get("/discover/personal", async (req, res) => {
 });
 
 // POST /api/discover/refresh - Trigger global update (Admin only)
-router.post("/discover/refresh", requirePermission("admin"), (req, res) => {
+router.post("/discover/refresh", requirePermission(PERMISSIONS.ADMIN), (req, res) => {
     if (discoveryCache.isUpdating) {
         return res.status(409).json({
             message: "Discovery update already in progress",
@@ -72,7 +73,7 @@ router.post("/discover/personal/refresh", async (req, res) => {
     const COOLDOWN_MS = 10 * 60 * 1000; // 10 minutes
 
     // Admin bypass for cooldown? Optional, but let's enforce for all to prevents abuse/load
-    if (!req.user.permissions?.includes("admin")) {
+    if (!req.user.permissions?.includes(PERMISSIONS.ADMIN)) {
         const lastRefresh = personalRefreshCooldowns.get(userId);
         if (lastRefresh && (now - lastRefresh) < COOLDOWN_MS) {
             const remaining = Math.ceil((COOLDOWN_MS - (now - lastRefresh)) / 60000);
@@ -108,7 +109,7 @@ router.post("/discover/personal/refresh", async (req, res) => {
 });
 
 // POST /api/discover/personal/refresh-all - Trigger personal update for ALL users (Admin only)
-router.post("/discover/personal/refresh-all", requirePermission("admin"), (req, res) => {
+router.post("/discover/personal/refresh-all", requirePermission(PERMISSIONS.ADMIN), (req, res) => {
     if (isPersonalUpdating) {
         return res.status(409).json({
             message: "Personal discovery update already in progress",
@@ -123,7 +124,7 @@ router.post("/discover/personal/refresh-all", requirePermission("admin"), (req, 
 });
 
 // POST /api/discover/clear - Clear cache (Admin only)
-router.post("/discover/clear", requirePermission("admin"), async (req, res) => {
+router.post("/discover/clear", requirePermission(PERMISSIONS.ADMIN), async (req, res) => {
     try {
         await db.AppConfig.update({
             discoveryData: {

@@ -7,6 +7,7 @@ import { db } from "../config/db.js";
 import { JWT_SECRET } from "../middleware/auth.js";
 import { configurePassport } from "../config/passport.js";
 import { loadSettings } from "../services/api.js";
+import { PERMISSIONS } from "../config/permissions.js";
 
 const router = express.Router();
 
@@ -75,7 +76,7 @@ router.post("/init", async (req, res, next) => {
             id: crypto.randomUUID(),
             username,
             password: hashedPassword,
-            permissions: ["admin"],
+            permissions: [PERMISSIONS.ADMIN],
             authType: 'local'
         });
 
@@ -109,6 +110,12 @@ router.get('/oidc', async (req, res, next) => {
         if (!settings.oidcEnabled) {
             return res.status(400).send("OIDC is not enabled");
         }
+
+        // Store mobile flag if present
+        if (req.query.mobile) {
+            req.session.isMobile = true;
+        }
+
         await configurePassport();
         passport.authenticate('oidc')(req, res, next);
     } catch (error) {
@@ -124,20 +131,33 @@ router.get('/oidc/callback', (req, res, next) => {
             const frontendUrl = settings.appUrl || process.env.APP_URL || process.env.FRONTEND_URL || "http://localhost:3000";
             const cleanFrontendUrl = frontendUrl.replace(/\/$/, '');
 
+            // Check for mobile session
+            const isMobile = req.session?.isMobile;
+            if (req.session) delete req.session.isMobile; // Clear it
+
             if (err) {
                 console.error("OIDC Authentication Error:", err);
-                return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(err.message || 'oidc_error')}`);
+                const errorUrl = isMobile
+                    ? `aurral://login?error=${encodeURIComponent(err.message || 'oidc_error')}`
+                    : `${cleanFrontendUrl}/login?error=${encodeURIComponent(err.message || 'oidc_error')}`;
+                return res.redirect(errorUrl);
             }
             if (!user) {
                 console.error("OIDC Authentication Failed (No User):", info);
                 const errorMsg = info?.message || 'oidc_failed';
-                return res.redirect(`${cleanFrontendUrl}/login?error=${encodeURIComponent(errorMsg)}`);
+                const errorUrl = isMobile
+                    ? `aurral://login?error=${encodeURIComponent(errorMsg)}`
+                    : `${cleanFrontendUrl}/login?error=${encodeURIComponent(errorMsg)}`;
+                return res.redirect(errorUrl);
             }
 
             req.logIn(user, (err) => {
                 if (err) {
                     console.error("Req.logIn failed:", err);
-                    return res.redirect(`${cleanFrontendUrl}/login?error=login_session_failed`);
+                    const errorUrl = isMobile
+                        ? `aurral://login?error=login_session_failed`
+                        : `${cleanFrontendUrl}/login?error=login_session_failed`;
+                    return res.redirect(errorUrl);
                 }
 
                 const token = jwt.sign(
@@ -146,7 +166,11 @@ router.get('/oidc/callback', (req, res, next) => {
                     { expiresIn: "7d" }
                 );
 
-                res.redirect(`${cleanFrontendUrl}/login?token=${token}`);
+                const successUrl = isMobile
+                    ? `aurral://login?token=${token}`
+                    : `${cleanFrontendUrl}/login?token=${token}`;
+
+                res.redirect(successUrl);
             });
         } catch (error) {
             next(error);
@@ -166,7 +190,7 @@ router.get("/me", async (req, res, next) => {
 
         if (
             userWithoutPass.permissions &&
-            userWithoutPass.permissions.includes("admin")
+            userWithoutPass.permissions.includes(PERMISSIONS.ADMIN)
         ) {
             const settings = await loadSettings();
             userWithoutPass.lidarrUrl = settings.lidarrUrl;

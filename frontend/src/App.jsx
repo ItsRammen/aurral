@@ -13,6 +13,7 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { PlayerProvider } from "./contexts/PlayerContext";
 import ReloadPrompt from "./components/ReloadPrompt";
 import MiniPlayer from "./components/MiniPlayer";
+import { PERMISSIONS } from "./utils/permissions";
 
 // Lazy Load Pages
 const SearchResultsPage = lazy(() => import("./pages/SearchResultsPage"));
@@ -143,7 +144,7 @@ function AppContent() {
 
           <Route path="/settings" element={
             <ProtectedRoute>
-              <PermissionRoute permission="admin">
+              <PermissionRoute permission={PERMISSIONS.ADMIN}>
                 <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
                   <SettingsPage />
                 </Layout>
@@ -153,7 +154,7 @@ function AppContent() {
 
           <Route path="/users" element={
             <ProtectedRoute>
-              <PermissionRoute permission="admin">
+              <PermissionRoute permission={PERMISSIONS.MANAGE_USERS}>
                 <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
                   <UsersPage />
                 </Layout>

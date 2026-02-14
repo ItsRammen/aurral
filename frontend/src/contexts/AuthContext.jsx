@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../utils/api';
+import { PERMISSIONS } from '../utils/permissions';
 
 const AuthContext = createContext(null);
 
@@ -106,7 +107,7 @@ export const AuthProvider = ({ children }) => {
 
   const hasPermission = (permission) => {
     if (!user) return false;
-    if (user.permissions.includes('admin')) return true;
+    if (user.permissions.includes(PERMISSIONS.ADMIN)) return true;
     return user.permissions.includes(permission);
   };
 

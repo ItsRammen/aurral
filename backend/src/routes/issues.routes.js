@@ -1,6 +1,7 @@
 import express from "express";
 import { db } from "../config/db.js";
 import { requirePermission } from "../middleware/auth.js";
+import { PERMISSIONS } from "../config/permissions.js";
 const router = express.Router();
 
 const ALLOWED_TYPES = [
@@ -20,15 +21,19 @@ const ALLOWED_STATUSES = ['open', 'resolved', 'ignored'];
  */
 router.get("/", async (req, res) => {
     try {
-        const { status, type, limit = 50, offset = 0 } = req.query;
+        const { status, type, limit = 50, offset = 0, sortBy = 'createdAt', order = 'DESC' } = req.query;
 
         const where = {};
         if (status) where.status = status;
         if (type) where.type = type;
 
+        const allowedSortFields = ['createdAt', 'updatedAt', 'artistName', 'retryAttempts', 'type'];
+        const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'createdAt';
+        const sortOrder = ['ASC', 'DESC'].includes(order.toUpperCase()) ? order.toUpperCase() : 'DESC';
+
         const issues = await db.Issue.findAndCountAll({
             where,
-            order: [['createdAt', 'DESC']],
+            order: [[sortField, sortOrder]],
             limit: parseInt(limit),
             offset: parseInt(offset),
         });
@@ -131,7 +136,7 @@ router.get("/:id", async (req, res) => {
  * Protected: Requires admin or manage_requests
  */
 router.patch("/:id", (req, res, next) => {
-    if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_requests")) return next();
+    if (req.user.permissions.includes(PERMISSIONS.ADMIN) || req.user.permissions.includes(PERMISSIONS.MANAGE_REQUESTS)) return next();
     res.status(403).json({ error: "Forbidden: Insufficient permissions" });
 }, async (req, res) => {
     try {
@@ -173,7 +178,7 @@ router.patch("/:id", (req, res, next) => {
  * DELETE /api/issues/:id
  * Delete an issue (admin only)
  */
-router.delete("/:id", requirePermission('admin'), async (req, res) => {
+router.delete("/:id", requirePermission(PERMISSIONS.ADMIN), async (req, res) => {
     try {
         const issue = await db.Issue.findByPk(req.params.id);
         if (!issue) {
@@ -193,7 +198,7 @@ router.delete("/:id", requirePermission('admin'), async (req, res) => {
  * Protected: Requires admin or manage_requests
  */
 router.post("/:id/retry", (req, res, next) => {
-    if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_requests")) return next();
+    if (req.user.permissions.includes(PERMISSIONS.ADMIN) || req.user.permissions.includes(PERMISSIONS.MANAGE_REQUESTS)) return next();
     res.status(403).json({ error: "Forbidden: Insufficient permissions" });
 }, async (req, res) => {
     try {
@@ -241,7 +246,7 @@ router.post("/:id/retry", (req, res, next) => {
  * POST /api/issues/bulk
  * Bulk update issues (resolve multiple, etc.)
  */
-router.post("/bulk", requirePermission('admin'), async (req, res) => {
+router.post("/bulk", requirePermission(PERMISSIONS.ADMIN), async (req, res) => {
     try {
         const { ids, action } = req.body;
 
@@ -269,6 +274,48 @@ router.post("/bulk", requirePermission('admin'), async (req, res) => {
                     resolvedAt: null,
                     resolvedBy: null
                 };
+                break;
+            case 'retry':
+            case 'retry_resolve':
+                updates = {
+                    status: action === 'retry_resolve' ? 'resolved' : 'open',
+                    retryAttempts: 0,
+                    lastRetryAt: new Date(),
+                    // If resolving, set resolution info
+                    ...(action === 'retry_resolve' ? {
+                        resolvedAt: new Date(),
+                        resolvedBy: req.user?.username || 'system',
+                        resolution: 'Bulk retry & resolve triggered'
+                    } : {
+                        resolvedAt: null,
+                        resolvedBy: null
+                    })
+                };
+
+                // Trigger Lidarr Search for affected albums
+                try {
+                    const issuesToRetry = await db.Issue.findAll({
+                        where: { id: ids },
+                        attributes: ['albumId']
+                    });
+
+                    const albumIds = [...new Set(issuesToRetry
+                        .map(i => i.albumId)
+                        .filter(id => id) // Filter out null/undefined
+                    )];
+
+                    if (albumIds.length > 0) {
+                        const { lidarrRequest } = await import("../services/api.js");
+                        // Lidarr AlbumSearch supports array of IDs
+                        await lidarrRequest('/command', 'POST', {
+                            name: 'AlbumSearch',
+                            albumIds: albumIds
+                        });
+                    }
+                } catch (err) {
+                    console.error("Failed to trigger bulk retry search:", err);
+                    // Continue to update status even if search trigger fails
+                }
                 break;
             case 'delete':
                 const deletedCount = await db.Issue.destroy({ where: { id: ids } });

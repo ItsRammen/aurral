@@ -31,13 +31,19 @@ function IssuesPage() {
     const navigate = useNavigate();
     const { showSuccess, showError } = useToast();
 
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [sortBy, setSortBy] = useState('createdAt');
+    const [sortOrder, setSortOrder] = useState('DESC');
+
     const fetchIssues = async () => {
         try {
             const offset = (page - 1) * limit;
-            const response = await api.get(`/issues?status=${activeTab}&limit=${limit}&offset=${offset}`);
+            const response = await api.get(`/issues?status=${activeTab}&limit=${limit}&offset=${offset}&sortBy=${sortBy}&order=${sortOrder}`);
             setIssues(response.data.issues);
             setCounts(response.data.counts);
             setTotal(response.data.total);
+            // Clear selection on refresh
+            setSelectedIds([]);
         } catch (error) {
             showError("Failed to load issues");
         } finally {
@@ -45,10 +51,28 @@ function IssuesPage() {
         }
     };
 
+    const handleBulkAction = async (action) => {
+        if (selectedIds.length === 0) return;
+
+        setActionLoading('bulk');
+        try {
+            await api.post('/issues/bulk', {
+                ids: selectedIds,
+                action
+            });
+            showSuccess(`Bulk ${action.replace('_', ' ')} completed`);
+            fetchIssues();
+        } catch (error) {
+            showError("Failed to perform bulk action");
+        } finally {
+            setActionLoading(null);
+        }
+    };
+
     useEffect(() => {
         setLoading(true);
         fetchIssues();
-    }, [activeTab, page]);
+    }, [activeTab, page, sortBy, sortOrder]);
 
     // Reset page when tab changes
     useEffect(() => {
@@ -143,6 +167,105 @@ function IssuesPage() {
                 className="mb-6"
             />
 
+            {/* Controls Bar */}
+            <div className="flex flex-col md:flex-row gap-4 justify-between items-center mb-6 bg-white dark:bg-gray-800 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm">
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="checkbox"
+                            checked={issues.length > 0 && selectedIds.length === issues.length}
+                            onChange={(e) => {
+                                if (e.target.checked) {
+                                    setSelectedIds(issues.map(i => i.id));
+                                } else {
+                                    setSelectedIds([]);
+                                }
+                            }}
+                            className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {selectedIds.length > 0 ? `${selectedIds.length} Selected` : "Select All"}
+                        </span>
+                    </div>
+
+                    {selectedIds.length > 0 && (
+                        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
+                            <div className="h-6 w-px bg-gray-200 dark:bg-gray-700 mx-2" />
+                            {activeTab === 'open' && (
+                                <>
+                                    <button
+                                        onClick={() => handleBulkAction('retry')}
+                                        disabled={!!actionLoading}
+                                        className="btn btn-xs bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400"
+                                        title="Retry Selected"
+                                    >
+                                        <RotateCw className="w-3 h-3 mr-1" /> Retry
+                                    </button>
+                                    <button
+                                        onClick={() => handleBulkAction('retry_resolve')}
+                                        disabled={!!actionLoading}
+                                        className="btn btn-xs bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400"
+                                        title="Retry & Resolve Selected"
+                                    >
+                                        <CheckCircle className="w-3 h-3 mr-1" /> Retry & Close
+                                    </button>
+                                    <button
+                                        onClick={() => handleBulkAction('resolve')}
+                                        disabled={!!actionLoading}
+                                        className="btn btn-xs bg-green-100 text-green-700 hover:bg-green-200 dark:bg-green-900/30 dark:text-green-400"
+                                        title="Resolve Selected"
+                                    >
+                                        <CheckCircle className="w-3 h-3 mr-1" /> Resolve
+                                    </button>
+                                    <button
+                                        onClick={() => handleBulkAction('ignore')}
+                                        disabled={!!actionLoading}
+                                        className="btn btn-xs bg-gray-100 text-gray-700 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400"
+                                        title="Ignore Selected"
+                                    >
+                                        <EyeOff className="w-3 h-3 mr-1" /> Ignore
+                                    </button>
+                                </>
+                            )}
+                            <button
+                                onClick={() => handleBulkAction('delete')}
+                                disabled={!!actionLoading}
+                                className="btn btn-xs bg-red-100 text-red-700 hover:bg-red-200 dark:bg-red-900/30 dark:text-red-400"
+                                title="Delete Selected"
+                            >
+                                <Trash2 className="w-3 h-3 mr-1" /> Delete
+                            </button>
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex items-center gap-2 w-full md:w-auto">
+                    <Filter className="w-4 h-4 text-gray-400" />
+                    <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value)}
+                        className="form-select text-sm py-1.5 pl-3 pr-8 rounded-lg border-gray-200 dark:border-gray-700 dark:bg-gray-800 focus:border-primary-500 focus:ring-primary-500"
+                    >
+                        <option value="createdAt">Date Created</option>
+                        <option value="updatedAt">Date Updated</option>
+                        <option value="artistName">Artist Name</option>
+                        <option value="retryAttempts">Retry Attempts</option>
+                        <option value="type">Issue Type</option>
+                    </select>
+                    <button
+                        onClick={() => setSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
+                        className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        title={sortOrder === 'ASC' ? "Ascending" : "Descending"}
+                    >
+                        {sortOrder === 'ASC' ? (
+                            <RefreshCw className="w-4 h-4 text-gray-500 rotate-180 transition-transform" />
+                        ) : (
+                            <RefreshCw className="w-4 h-4 text-gray-500 transition-transform" />
+                        )}
+                    </button>
+                </div>
+            </div>
+
             {issues.length === 0 ? (
                 <div className="card text-center py-16">
                     <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
@@ -160,9 +283,27 @@ function IssuesPage() {
                     {issues.map((issue) => (
                         <div
                             key={issue.id}
-                            className="card border border-gray-100 dark:border-gray-800 hover:shadow-md transition-shadow"
+                            className={`card border transition-all ${selectedIds.includes(issue.id)
+                                ? "border-primary-500 ring-1 ring-primary-500 bg-primary-50/10 dark:bg-primary-900/10"
+                                : "border-gray-100 dark:border-gray-800 hover:shadow-md"
+                                }`}
                         >
                             <div className="flex items-start gap-4">
+                                <div className="pt-1">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedIds.includes(issue.id)}
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                setSelectedIds(prev => [...prev, issue.id]);
+                                            } else {
+                                                setSelectedIds(prev => prev.filter(id => id !== issue.id));
+                                            }
+                                        }}
+                                        className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                                    />
+                                </div>
+
                                 {/* Severity indicator */}
                                 <div className={`p-2 rounded-lg ${getSeverityStyles(issue.severity)}`}>
                                     {issue.severity === "error" ? (

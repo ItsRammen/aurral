@@ -24,6 +24,7 @@ import {
 } from "../utils/api";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
+import { PERMISSIONS } from "../utils/permissions";
 import AddArtistModal from "../components/AddArtistModal";
 import ArtistImage from "../components/ArtistImage";
 import ArtistStatusBadge from "../components/ArtistStatusBadge";
@@ -661,7 +662,7 @@ function DiscoverPage() {
                   <h3 className="font-bold text-lg">No playback history found</h3>
                   <p className="text-base-content/60 max-w-md mx-auto mt-2">
                     We couldn't find enough listening history yet.
-                    {user?.permissions?.includes('admin')
+                    {user?.permissions?.includes(PERMISSIONS.ADMIN)
                       ? " Try playing some music on Navidrome or running the refresh job in Settings > Jobs."
                       : " Try playing some music on Navidrome."}
                   </p>
@@ -709,7 +710,7 @@ function DiscoverPage() {
                   <PlayCircle className="w-6 h-6 mr-3 text-primary-500" />
                   Aurral Library Suggestions
                 </h2>
-                {user?.permissions?.includes("admin") && (
+                {user?.permissions?.includes(PERMISSIONS.ADMIN) && (
                   <button
                     onClick={handleRefreshDiscovery}
                     disabled={refreshing || isUpdating}

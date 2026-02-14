@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { db } from "../config/db.js";
+import { PERMISSIONS } from "../config/permissions.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -33,7 +34,7 @@ export const authMiddleware = async (req, res, next) => {
     }
 
     try {
-        const secret = getJwtSecret();
+        const secret = JWT_SECRET;
         const decoded = jwt.verify(token, secret);
 
         const user = await db.User.findByPk(decoded.id);
@@ -55,11 +56,11 @@ export const requirePermission = (permission) => {
             return res.status(401).json({ error: "Unauthorized" });
         }
 
-        if (req.user.permissions.includes("admin")) {
+        if (req.user.permissions.includes(PERMISSIONS.ADMIN)) {
             return next();
         }
 
-        if (!req.user.permissions.includes(permission)) {
+        if (permission && !req.user.permissions.includes(permission)) {
             return res.status(403).json({ error: "Forbidden: Insufficient permissions" });
         }
         next();
@@ -67,4 +68,3 @@ export const requirePermission = (permission) => {
 };
 
 export const JWT_SECRET = getJwtSecret(); // Export for consistent usage if needed, but preferable to use function
-

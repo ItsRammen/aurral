@@ -7,6 +7,7 @@ import {
     loadSettings
 } from "../services/api.js";
 import { requirePermission } from "../middleware/auth.js";
+import { PERMISSIONS } from "../config/permissions.js";
 
 const router = express.Router();
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -96,7 +97,7 @@ router.get("/", async (req, res, next) => {
 });
 
 // DELETE /api/requests/:mbid
-router.delete("/:mbid", requirePermission("request"), async (req, res, next) => {
+router.delete("/:mbid", requirePermission(PERMISSIONS.REQUEST), async (req, res, next) => {
     const { mbid } = req.params;
 
     try {
@@ -108,8 +109,8 @@ router.delete("/:mbid", requirePermission("request"), async (req, res, next) => 
 
         // Security: Only allow deletion by the original requester or admins
         const isOwner = request.requestedByUserId === req.user.id;
-        const isAdmin = req.user.permissions.includes("admin") ||
-            req.user.permissions.includes("manage_requests");
+        const isAdmin = req.user.permissions.includes(PERMISSIONS.ADMIN) ||
+            req.user.permissions.includes(PERMISSIONS.MANAGE_REQUESTS);
 
         if (!isOwner && !isAdmin) {
             return res.status(403).json({ error: "Cannot delete others' requests" });
@@ -124,7 +125,7 @@ router.delete("/:mbid", requirePermission("request"), async (req, res, next) => 
 
 // POST /api/requests/:id/approve
 router.post("/:id/approve", (req, res, next) => {
-    if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_requests")) return next();
+    if (req.user.permissions.includes(PERMISSIONS.ADMIN) || req.user.permissions.includes(PERMISSIONS.MANAGE_REQUESTS)) return next();
     res.status(403).json({ error: "Forbidden: Insufficient permissions" });
 }, async (req, res, next) => {
     const { id } = req.params;
@@ -205,7 +206,7 @@ router.post("/:id/approve", (req, res, next) => {
 
 // POST /api/requests/:id/deny
 router.post("/:id/deny", (req, res, next) => {
-    if (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_requests")) return next();
+    if (req.user.permissions.includes(PERMISSIONS.ADMIN) || req.user.permissions.includes(PERMISSIONS.MANAGE_REQUESTS)) return next();
     res.status(403).json({ error: "Forbidden: Insufficient permissions" });
 }, async (req, res, next) => {
     const { id } = req.params;

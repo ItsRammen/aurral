@@ -12,6 +12,7 @@ import {
     LIDARR_API_KEY,
     loadSettings
 } from "../services/api.js";
+import { PERMISSIONS } from "../config/permissions.js";
 
 const router = express.Router();
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -221,7 +222,7 @@ router.get("/library/stats", async (req, res, next) => {
 });
 
 // Update monitored status for albums (Admin only)
-router.post("/albums/monitor", requirePermission("admin"), async (req, res, next) => {
+router.post("/albums/monitor", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     try {
         const { albumIds, monitored } = req.body;
         if (!albumIds || !Array.isArray(albumIds)) {
@@ -238,7 +239,7 @@ router.post("/albums/monitor", requirePermission("admin"), async (req, res, next
 });
 
 // Delete Artist (Admin only)
-router.delete("/artists/:id", requirePermission("admin"), async (req, res, next) => {
+router.delete("/artists/:id", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     try {
         const { id } = req.params;
         const { deleteFiles = false } = req.query;
@@ -253,7 +254,7 @@ router.delete("/artists/:id", requirePermission("admin"), async (req, res, next)
 });
 
 // Update Artist (Admin only)
-router.put("/artists/:id", requirePermission("admin"), async (req, res, next) => {
+router.put("/artists/:id", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     try {
         const { id } = req.params;
         const result = await lidarrRequest(`/artist/${id}`, "PUT", req.body);
@@ -320,7 +321,7 @@ router.post("/lookup/batch", async (req, res, next) => {
 });
 
 // Add Artist
-router.post("/artists", requirePermission("request"), async (req, res, next) => {
+router.post("/artists", requirePermission(PERMISSIONS.REQUEST), async (req, res, next) => {
     try {
         const {
             foreignArtistId,
@@ -407,9 +408,9 @@ router.post("/artists", requirePermission("request"), async (req, res, next) => 
             }));
         }
 
-        const isAuthorized = req.user.permissions.includes('admin') ||
-            req.user.permissions.includes('auto_approve') ||
-            req.user.permissions.includes('manage_requests');
+        const isAuthorized = req.user.permissions.includes(PERMISSIONS.ADMIN) ||
+            req.user.permissions.includes(PERMISSIONS.AUTO_APPROVE) ||
+            req.user.permissions.includes(PERMISSIONS.MANAGE_REQUESTS);
         let result = { id: null };
 
         if (isAuthorized) {
@@ -505,7 +506,6 @@ router.post("/artists", requirePermission("request"), async (req, res, next) => 
     }
 });
 
-
 // Get Albums
 router.get("/albums", async (req, res, next) => {
     try {
@@ -552,7 +552,7 @@ router.get("/tracks", async (req, res, next) => {
 });
 
 // Update Album (Admin only)
-router.put("/albums/:id", requirePermission("admin"), async (req, res, next) => {
+router.put("/albums/:id", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     try {
         const { id } = req.params;
         const result = await lidarrRequest(`/album/${id}`, "PUT", req.body);
@@ -563,7 +563,7 @@ router.put("/albums/:id", requirePermission("admin"), async (req, res, next) => 
 });
 
 // Album Search Command (Admin only)
-router.post("/command/albumsearch", requirePermission("admin"), async (req, res, next) => {
+router.post("/command/albumsearch", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     try {
         const { albumIds } = req.body;
         if (!albumIds || !Array.isArray(albumIds)) {
@@ -582,7 +582,7 @@ router.post("/command/albumsearch", requirePermission("admin"), async (req, res,
 });
 
 // General Command (Admin only)
-router.post("/command", requirePermission("admin"), async (req, res, next) => {
+router.post("/command", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     try {
         const result = await lidarrRequest("/command", "POST", req.body);
         res.json(result);

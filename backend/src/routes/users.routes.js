@@ -4,19 +4,20 @@ import crypto from "crypto";
 import { Op } from "sequelize";
 import { db } from "../config/db.js";
 import { requirePermission } from "../middleware/auth.js";
+import { PERMISSIONS } from "../config/permissions.js";
 
 const router = express.Router();
 
 // Helper to check for admin or manage_users permission
 const ensureUserManagement = (req, res, next) => {
-    if (req.user && (req.user.permissions.includes("admin") || req.user.permissions.includes("manage_users"))) {
+    if (req.user && (req.user.permissions.includes(PERMISSIONS.ADMIN) || req.user.permissions.includes(PERMISSIONS.MANAGE_USERS))) {
         return next();
     }
     res.status(403).json({ error: "Forbidden: Insufficient permissions" });
 };
 
-// GET /api/users - List all users (Admin)
-router.get("/", requirePermission("manage_users"), async (req, res, next) => {
+// GET /api/users - List all users (Admin/Manager)
+router.get("/", requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res, next) => {
     try {
         const users = await db.User.findAll({
             attributes: { exclude: ['password'] }
@@ -46,8 +47,8 @@ router.get("/", requirePermission("manage_users"), async (req, res, next) => {
     }
 });
 
-// POST /api/users - Create User (Admin)
-router.post("/", requirePermission("manage_users"), async (req, res, next) => {
+// POST /api/users - Create User (Admin/Manager)
+router.post("/", requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res, next) => {
     const { username, password, email, permissions } = req.body;
 
     try {
@@ -62,7 +63,7 @@ router.post("/", requirePermission("manage_users"), async (req, res, next) => {
             username,
             email: email || null,
             password: hashedPassword,
-            permissions: permissions || ["read_only"],
+            permissions: permissions || [PERMISSIONS.READ_ONLY],
             authType: 'local'
         });
 
@@ -73,8 +74,8 @@ router.post("/", requirePermission("manage_users"), async (req, res, next) => {
     }
 });
 
-// PUT /api/users/:id - Update User (Admin)
-router.put("/:id", requirePermission("manage_users"), async (req, res, next) => {
+// PUT /api/users/:id - Update User (Admin/Manager)
+router.put("/:id", requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res, next) => {
     const { id } = req.params;
     const { username, password, email, permissions } = req.body;
 
@@ -90,11 +91,11 @@ router.put("/:id", requirePermission("manage_users"), async (req, res, next) => 
         }
 
         // Prevent removing last admin
-        if (targetUser.permissions.includes('admin') &&
-            permissions && !permissions.includes('admin')) {
+        if (targetUser.permissions.includes(PERMISSIONS.ADMIN) &&
+            permissions && !permissions.includes(PERMISSIONS.ADMIN)) {
             // Fetch all users and filter in memory for simplicity and SQLite compatibility
             const allUsers = await db.User.findAll();
-            const adminCount = allUsers.filter(u => u.permissions.includes('admin')).length;
+            const adminCount = allUsers.filter(u => u.permissions.includes(PERMISSIONS.ADMIN)).length;
 
             if (adminCount <= 1) {
                 return res.status(400).json({ error: "Cannot remove the last admin" });
@@ -116,8 +117,8 @@ router.put("/:id", requirePermission("manage_users"), async (req, res, next) => 
     }
 });
 
-// DELETE /api/users/:id - Delete User (Admin)
-router.delete("/:id", requirePermission("manage_users"), async (req, res, next) => {
+// DELETE /api/users/:id - Delete User (Admin/Manager)
+router.delete("/:id", requirePermission(PERMISSIONS.MANAGE_USERS), async (req, res, next) => {
     const { id } = req.params;
 
     try {
@@ -128,9 +129,9 @@ router.delete("/:id", requirePermission("manage_users"), async (req, res, next) 
             return res.status(400).json({ error: "Cannot delete SSO users locally. Please remove them from your Identity Provider." });
         }
 
-        if (targetUser.permissions.includes('admin')) {
+        if (targetUser.permissions.includes(PERMISSIONS.ADMIN)) {
             const allUsers = await db.User.findAll();
-            const adminCount = allUsers.filter(u => u.permissions.includes('admin')).length;
+            const adminCount = allUsers.filter(u => u.permissions.includes(PERMISSIONS.ADMIN)).length;
             if (adminCount <= 1) {
                 return res.status(400).json({ error: "Cannot delete the last admin" });
             }
@@ -148,7 +149,7 @@ router.get("/:id/stats", async (req, res, next) => {
     const { id } = req.params;
 
     // Allow users to view their own stats or admins to view any
-    if (req.user.id !== id && !req.user.permissions.includes("admin") && !req.user.permissions.includes("manage_users")) {
+    if (req.user.id !== id && !req.user.permissions.includes(PERMISSIONS.ADMIN) && !req.user.permissions.includes(PERMISSIONS.MANAGE_USERS)) {
         return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -318,7 +319,7 @@ router.get("/:id/avatar", async (req, res, next) => {
 router.post("/:id/avatar", async (req, res, next) => {
     const { id } = req.params;
 
-    if (req.user.id !== id && !req.user.permissions.includes("admin")) {
+    if (req.user.id !== id && !req.user.permissions.includes(PERMISSIONS.ADMIN)) {
         return res.status(403).json({ error: "Forbidden" });
     }
 
@@ -344,7 +345,7 @@ router.post("/:id/avatar", async (req, res, next) => {
 router.delete("/:id/avatar", async (req, res, next) => {
     const { id } = req.params;
 
-    if (req.user.id !== id && !req.user.permissions.includes("admin")) {
+    if (req.user.id !== id && !req.user.permissions.includes(PERMISSIONS.ADMIN)) {
         return res.status(403).json({ error: "Forbidden" });
     }
 

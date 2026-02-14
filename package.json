@@ -10,8 +10,13 @@
     "build": "cd frontend && npm run build"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "axios": "^1.13.5",
+    "clsx": "^2.1.1",
     "express-basic-auth": "^1.2.1",
-    "express-rate-limit": "^8.2.1"
+    "express-rate-limit": "^8.2.1",
+    "lucide-react-native": "^0.563.0",
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
     "concurrently": "^8.2.2"

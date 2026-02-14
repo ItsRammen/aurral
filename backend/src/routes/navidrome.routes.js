@@ -3,6 +3,7 @@ import axios from "axios";
 import crypto from "crypto";
 import { db } from "../config/db.js";
 import { Op } from "sequelize";
+import { PERMISSIONS } from "../config/permissions.js";
 
 const router = express.Router();
 
@@ -17,7 +18,7 @@ const getGlobalNavidromeConfig = async () => {
     });
     // Filter in JS for robustness
     const adminWithConfig = admins.find(u =>
-        (u.permissions.includes('admin') || u.permissions.includes('aurral_admin')) &&
+        (u.permissions.includes(PERMISSIONS.ADMIN) || u.permissions.includes('aurral_admin')) &&
         u.navidromeConfig &&
         u.navidromeConfig.url
     );

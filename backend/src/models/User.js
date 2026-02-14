@@ -30,7 +30,7 @@ const User = sequelize.define('User', {
     },
     permissions: {
         type: DataTypes.JSON,
-        defaultValue: []
+        defaultValue: ["request"]
     },
     // Navidrome integration fields
     navidromeId: DataTypes.STRING,
