@@ -1,6 +1,11 @@
 import React, { useState } from 'react';
 import { Music, Layers, Box, CheckCircle, RefreshCw, Activity, Radio } from 'lucide-react';
-import { saveNavidromeConfig, deleteNavidromeConfig, testLidarrConnection, testLastfmConnection, triggerDiscoveryRefresh } from '../../utils/api';
+import {
+    saveNavidromeConfig, deleteNavidromeConfig,
+    saveJellyfinConfig, deleteJellyfinConfig,
+    savePlexConfig, deletePlexConfig,
+    testLidarrConnection, testLastfmConnection, triggerDiscoveryRefresh
+} from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
 import {
     SettingsCard,
@@ -18,15 +23,28 @@ export default function IntegrationsTab({
     navidromeStatus,
     setNavidromeStatus,
     setNavidromeConfig: updateNavidromeConfig,
-    navidromeConfig
+    navidromeConfig,
+    jellyfinStatus,
+    setJellyfinStatus,
+    jellyfinConfig,
+    setJellyfinConfig: updateJellyfinConfig,
+    plexStatus,
+    setPlexStatus,
+    plexConfig,
+    setPlexConfig: updatePlexConfig,
 }) {
     const { showSuccess, showError } = useToast();
     const [connectingNavidrome, setConnectingNavidrome] = useState(false);
     const [showNavidromeForm, setShowNavidromeForm] = useState(false);
+    const [connectingJellyfin, setConnectingJellyfin] = useState(false);
+    const [showJellyfinForm, setShowJellyfinForm] = useState(false);
+    const [connectingPlex, setConnectingPlex] = useState(false);
+    const [showPlexForm, setShowPlexForm] = useState(false);
     const [testingLidarr, setTestingLidarr] = useState(false);
     const [testingLastfm, setTestingLastfm] = useState(false);
     const [lastfmValid, setLastfmValid] = useState(null);
 
+    // --- Navidrome Handlers ---
     const handleConnectNavidrome = async (e) => {
         e.preventDefault();
         setConnectingNavidrome(true);
@@ -57,6 +75,67 @@ export default function IntegrationsTab({
         }
     };
 
+    // --- Jellyfin Handlers ---
+    const handleConnectJellyfin = async (e) => {
+        e.preventDefault();
+        setConnectingJellyfin(true);
+        try {
+            const response = await saveJellyfinConfig(jellyfinConfig);
+            if (response.success) {
+                showSuccess("Jellyfin connected successfully");
+                setJellyfinStatus({ connected: true, url: jellyfinConfig.url });
+                setShowJellyfinForm(false);
+            }
+        } catch (err) {
+            showError(err.response?.data?.error || "Failed to connect to Jellyfin");
+        } finally {
+            setConnectingJellyfin(false);
+        }
+    };
+
+    const handleDisconnectJellyfin = async () => {
+        if (!window.confirm("Are you sure you want to disconnect Jellyfin?")) return;
+        try {
+            await deleteJellyfinConfig();
+            showSuccess("Jellyfin disconnected");
+            setJellyfinStatus({ connected: false });
+            updateJellyfinConfig({ url: "", apiKey: "" });
+        } catch (err) {
+            showError("Failed to disconnect Jellyfin");
+        }
+    };
+
+    // --- Plex Handlers ---
+    const handleConnectPlex = async (e) => {
+        e.preventDefault();
+        setConnectingPlex(true);
+        try {
+            const response = await savePlexConfig(plexConfig);
+            if (response.success) {
+                showSuccess(`Plex connected successfully (${response.config?.serverName || 'Plex'})`);
+                setPlexStatus({ connected: true, url: plexConfig.url });
+                setShowPlexForm(false);
+            }
+        } catch (err) {
+            showError(err.response?.data?.error || "Failed to connect to Plex");
+        } finally {
+            setConnectingPlex(false);
+        }
+    };
+
+    const handleDisconnectPlex = async () => {
+        if (!window.confirm("Are you sure you want to disconnect Plex?")) return;
+        try {
+            await deletePlexConfig();
+            showSuccess("Plex disconnected");
+            setPlexStatus({ connected: false });
+            updatePlexConfig({ url: "", token: "" });
+        } catch (err) {
+            showError("Failed to disconnect Plex");
+        }
+    };
+
+    // --- Lidarr & Last.fm ---
     const handleTestLidarr = async (e) => {
         e.preventDefault();
         if (!settings.lidarrUrl || !settings.lidarrApiKey) {
@@ -192,19 +271,76 @@ export default function IntegrationsTab({
                         showForm={showNavidromeForm}
                     />
 
-                    {/* Placeholder Cards */}
-                    <PlaceholderCard icon={Layers} name="Plex" />
-                    <PlaceholderCard icon={Box} name="Jellyfin" />
+                    {/* Jellyfin Card */}
+                    <ServiceCard
+                        icon={Box}
+                        name="Jellyfin"
+                        description={jellyfinStatus.connected
+                            ? `Connected @ ${new URL(jellyfinStatus.url).hostname}`
+                            : "Open-source media server"}
+                        connected={jellyfinStatus.connected}
+                        onConnect={() => setShowJellyfinForm(true)}
+                        onDisconnect={handleDisconnectJellyfin}
+                        showForm={showJellyfinForm}
+                    />
+
+                    {/* Plex Card */}
+                    <ServiceCard
+                        icon={Layers}
+                        name="Plex"
+                        description={plexStatus.connected
+                            ? `Connected @ ${new URL(plexStatus.url).hostname}`
+                            : "Premium media server"}
+                        connected={plexStatus.connected}
+                        onConnect={() => setShowPlexForm(true)}
+                        onDisconnect={handleDisconnectPlex}
+                        showForm={showPlexForm}
+                    />
                 </div>
 
                 {/* Navidrome Config Form */}
                 {showNavidromeForm && (
-                    <NavidromeForm
-                        config={navidromeConfig}
-                        onConfigChange={updateNavidromeConfig}
+                    <StreamingForm
+                        title="Connect Navidrome"
                         onSubmit={handleConnectNavidrome}
                         onCancel={() => setShowNavidromeForm(false)}
                         loading={connectingNavidrome}
+                        fields={[
+                            { label: "Server URL", type: "url", value: navidromeConfig.url, key: "url", placeholder: "https://music.yourdomain.com", fullWidth: true },
+                            { label: "Username", value: navidromeConfig.username, key: "username" },
+                            { label: "Password / API Token", type: "password", value: navidromeConfig.password, key: "password" },
+                        ]}
+                        onFieldChange={(key, val) => updateNavidromeConfig({ ...navidromeConfig, [key]: val })}
+                    />
+                )}
+
+                {/* Jellyfin Config Form */}
+                {showJellyfinForm && (
+                    <StreamingForm
+                        title="Connect Jellyfin"
+                        onSubmit={handleConnectJellyfin}
+                        onCancel={() => setShowJellyfinForm(false)}
+                        loading={connectingJellyfin}
+                        fields={[
+                            { label: "Server URL", type: "url", value: jellyfinConfig.url, key: "url", placeholder: "https://jellyfin.yourdomain.com", fullWidth: true },
+                            { label: "API Key", type: "password", value: jellyfinConfig.apiKey, key: "apiKey", placeholder: "From Dashboard → API Keys", fullWidth: true },
+                        ]}
+                        onFieldChange={(key, val) => updateJellyfinConfig({ ...jellyfinConfig, [key]: val })}
+                    />
+                )}
+
+                {/* Plex Config Form */}
+                {showPlexForm && (
+                    <StreamingForm
+                        title="Connect Plex"
+                        onSubmit={handleConnectPlex}
+                        onCancel={() => setShowPlexForm(false)}
+                        loading={connectingPlex}
+                        fields={[
+                            { label: "Server URL", type: "url", value: plexConfig.url, key: "url", placeholder: "http://localhost:32400", fullWidth: true },
+                            { label: "X-Plex-Token", type: "password", value: plexConfig.token, key: "token", placeholder: "From Plex Web → Inspect XML", fullWidth: true },
+                        ]}
+                        onFieldChange={(key, val) => updatePlexConfig({ ...plexConfig, [key]: val })}
                     />
                 )}
             </SettingsCard>
@@ -212,7 +348,8 @@ export default function IntegrationsTab({
     );
 }
 
-// Helper Components
+// --- Helper Components ---
+
 function TestButton({ onClick, loading, disabled, success, label = "Test Connection" }) {
     return (
         <button
@@ -263,51 +400,28 @@ function ServiceCard({ icon: Icon, name, description, connected, onConnect, onDi
     );
 }
 
-function PlaceholderCard({ icon: Icon, name }) {
-    return (
-        <div className="p-5 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700 flex flex-col items-center text-center grayscale opacity-50 cursor-not-allowed text-gray-500">
-            <div className="w-10 h-10 rounded-xl bg-gray-200 dark:bg-gray-700 mb-3 flex items-center justify-center text-gray-400">
-                <Icon className="w-5 h-5" />
-            </div>
-            <h4 className="font-bold text-sm">{name}</h4>
-            <span className="text-[10px] uppercase font-black text-gray-400 mt-1 tracking-widest">Coming Soon</span>
-        </div>
-    );
-}
-
-function NavidromeForm({ config, onConfigChange, onSubmit, onCancel, loading }) {
+function StreamingForm({ title, fields, onFieldChange, onSubmit, onCancel, loading }) {
     return (
         <div className="mt-6 p-6 bg-gray-50 dark:bg-gray-800/50 rounded-2xl border border-dashed border-gray-200 dark:border-gray-700 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-4">
-                <h4 className="font-bold text-gray-900 dark:text-white">Connect Navidrome</h4>
+                <h4 className="font-bold text-gray-900 dark:text-white">{title}</h4>
                 <button onClick={onCancel} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">Cancel</button>
             </div>
 
             <form onSubmit={onSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                    <FormField label="Server URL" small>
-                        <SettingsInput
-                            type="url"
-                            value={config.url}
-                            onChange={(val) => onConfigChange({ ...config, url: val })}
-                            placeholder="https://music.yourdomain.com"
-                            validateUrl
-                        />
-                    </FormField>
-                </div>
-                <FormField label="Username" small>
-                    <SettingsInput
-                        value={config.username}
-                        onChange={(val) => onConfigChange({ ...config, username: val })}
-                    />
-                </FormField>
-                <FormField label="Password / API Token" small>
-                    <SettingsInput
-                        type="password"
-                        value={config.password}
-                        onChange={(val) => onConfigChange({ ...config, password: val })}
-                    />
-                </FormField>
+                {fields.map(field => (
+                    <div key={field.key} className={field.fullWidth ? "md:col-span-2" : ""}>
+                        <FormField label={field.label} small>
+                            <SettingsInput
+                                type={field.type || "text"}
+                                value={field.value}
+                                onChange={(val) => onFieldChange(field.key, val)}
+                                placeholder={field.placeholder || ""}
+                                validateUrl={field.type === "url"}
+                            />
+                        </FormField>
+                    </div>
+                ))}
                 <div className="md:col-span-2 pt-2">
                     <button
                         type="submit"

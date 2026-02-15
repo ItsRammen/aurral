@@ -8,6 +8,8 @@ import {
   getAppSettings,
   updateAppSettings,
   getNavidromeStatus,
+  getJellyfinStatus,
+  getPlexStatus,
   getJobStatus,
 } from "../utils/api";
 import { useToast } from "../contexts/ToastContext";
@@ -65,22 +67,44 @@ function SettingsPage() {
   });
   const [navidromeStatus, setNavidromeStatus] = useState({ connected: false });
 
+  const [jellyfinConfig, setJellyfinConfig] = useState({
+    url: "",
+    apiKey: "",
+  });
+  const [jellyfinStatus, setJellyfinStatus] = useState({ connected: false });
+
+  const [plexConfig, setPlexConfig] = useState({
+    url: "",
+    token: "",
+  });
+  const [plexStatus, setPlexStatus] = useState({ connected: false });
+
   useEffect(() => {
     const fetchSettings = async () => {
       setLoading(true);
       try {
-        const [healthData, savedSettings, naviStatus, jobsData] = await Promise.all([
+        const [healthData, savedSettings, naviStatus, jellyStatus, plexStatus, jobsData] = await Promise.all([
           checkHealth(),
           getAppSettings(),
           getNavidromeStatus(),
+          getJellyfinStatus(),
+          getPlexStatus(),
           getJobStatus(),
         ]);
         setHealth(healthData);
         setSettings(savedSettings);
         setJobs(jobsData);
         setNavidromeStatus(naviStatus);
+        setJellyfinStatus(jellyStatus);
+        setPlexStatus(plexStatus);
         if (naviStatus.connected) {
           setNavidromeConfig(prev => ({ ...prev, url: naviStatus.url, username: naviStatus.username }));
+        }
+        if (jellyStatus.connected) {
+          setJellyfinConfig(prev => ({ ...prev, url: jellyStatus.url }));
+        }
+        if (plexStatus.connected) {
+          setPlexConfig(prev => ({ ...prev, url: plexStatus.url }));
         }
 
         if (healthData.lidarrConfigured) {
@@ -175,6 +199,8 @@ function SettingsPage() {
         connectionStatus={{
           lidarr: !!(settings.lidarrUrl && settings.lidarrApiKey),
           navidrome: navidromeStatus.connected,
+          jellyfin: jellyfinStatus.connected,
+          plex: plexStatus.connected,
           lastfm: !!settings.lastfmApiKey
         }}
       />
@@ -193,6 +219,14 @@ function SettingsPage() {
             setNavidromeStatus={setNavidromeStatus}
             navidromeConfig={navidromeConfig}
             setNavidromeConfig={setNavidromeConfig}
+            jellyfinStatus={jellyfinStatus}
+            setJellyfinStatus={setJellyfinStatus}
+            jellyfinConfig={jellyfinConfig}
+            setJellyfinConfig={setJellyfinConfig}
+            plexStatus={plexStatus}
+            setPlexStatus={setPlexStatus}
+            plexConfig={plexConfig}
+            setPlexConfig={setPlexConfig}
           />
         )}
 

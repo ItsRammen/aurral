@@ -7,6 +7,8 @@ import {
     isPersonalUpdating
 } from "../services/discovery.js";
 import { syncNavidromeHistory } from "../services/navidrome.js";
+import { syncJellyfinHistory } from "../services/jellyfin.js";
+import { syncPlexHistory } from "../services/plex.js";
 import { prefetchArtistImages } from "../services/imageProxy.js";
 import { requirePermission } from "../middleware/auth.js";
 import { PERMISSIONS } from "../config/permissions.js";
@@ -21,6 +23,8 @@ router.get("/status", requirePermission(PERMISSIONS.ADMIN), async (req, res) => 
             'DiscoveryRefresh',
             'PersonalDiscovery',
             'NavidromeSync',
+            'JellyfinSync',
+            'PlexSync',
             'ImagePrefetch'
         ];
 
@@ -96,6 +100,40 @@ router.post("/refresh-navidrome", requirePermission(PERMISSIONS.ADMIN), async (r
     } catch (error) {
         console.error("Manual Navidrome job failed:", error);
         res.status(500).json({ error: "Failed to run Navidrome job" });
+    }
+});
+
+// POST /api/jobs/refresh-jellyfin - Trigger Jellyfin history sync & personal discovery
+router.post("/refresh-jellyfin", requirePermission(PERMISSIONS.ADMIN), async (req, res) => {
+    try {
+        runJob('JellyfinSync', async () => {
+            console.log("JellyfinSync: Syncing history...");
+            await syncJellyfinHistory();
+            console.log("JellyfinSync: Refreshing personal discovery...");
+            await refreshPersonalDiscoveryForAllUsers();
+        }).catch(err => console.error("Manual Jellyfin job failed:", err));
+
+        res.json({ message: "Jellyfin history sync and personal discovery started" });
+    } catch (error) {
+        console.error("Manual Jellyfin job failed:", error);
+        res.status(500).json({ error: "Failed to run Jellyfin job" });
+    }
+});
+
+// POST /api/jobs/refresh-plex - Trigger Plex history sync & personal discovery
+router.post("/refresh-plex", requirePermission(PERMISSIONS.ADMIN), async (req, res) => {
+    try {
+        runJob('PlexSync', async () => {
+            console.log("PlexSync: Syncing history...");
+            await syncPlexHistory();
+            console.log("PlexSync: Refreshing personal discovery...");
+            await refreshPersonalDiscoveryForAllUsers();
+        }).catch(err => console.error("Manual Plex job failed:", err));
+
+        res.json({ message: "Plex history sync and personal discovery started" });
+    } catch (error) {
+        console.error("Manual Plex job failed:", error);
+        res.status(500).json({ error: "Failed to run Plex job" });
     }
 });
 

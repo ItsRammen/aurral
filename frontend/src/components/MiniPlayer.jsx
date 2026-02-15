@@ -33,7 +33,10 @@ function MiniPlayer() {
 
   // Get auth token for streaming URL (HTML5 audio can't use Authorization headers)
   const authToken = token;
-  const streamUrl = `/api/navidrome/stream/${currentTrack.id}?token=${encodeURIComponent(authToken || "")}`;
+
+  // Build stream URL based on the track source (navidrome, jellyfin, or plex)
+  const source = currentTrack.source || 'navidrome';
+  const streamUrl = `/api/${source}/stream/${currentTrack.id}?token=${encodeURIComponent(authToken || "")}`;
   const coverUrl = currentTrack.coverArt ? `${currentTrack.coverArt}?token=${encodeURIComponent(authToken || "")}` : null;
 
   return (

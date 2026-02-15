@@ -2,6 +2,8 @@ import { db } from "../config/db.js";
 import { Op } from "sequelize";
 import { updateDiscoveryCache, refreshPersonalDiscoveryForAllUsers } from "./discovery.js";
 import { syncNavidromeHistory } from "./navidrome.js";
+import { syncJellyfinHistory } from "./jellyfin.js";
+import { syncPlexHistory } from "./plex.js";
 import { prefetchArtistImages } from "./imageProxy.js";
 import { loadSettings } from "./api.js";
 import { startDownloadTracker } from "./downloadTracker.js";
@@ -49,6 +51,12 @@ export const initScheduler = async () => {
 
     setTimeout(() => runJob('NavidromeSync', syncNavidromeHistory), 10000);
     setInterval(() => runJob('NavidromeSync', syncNavidromeHistory), 30 * 60 * 1000);
+
+    setTimeout(() => runJob('JellyfinSync', syncJellyfinHistory), 12000);
+    setInterval(() => runJob('JellyfinSync', syncJellyfinHistory), 30 * 60 * 1000);
+
+    setTimeout(() => runJob('PlexSync', syncPlexHistory), 14000);
+    setInterval(() => runJob('PlexSync', syncPlexHistory), 30 * 60 * 1000);
 
     setInterval(() => runJob('PersonalDiscovery', refreshPersonalDiscoveryForAllUsers), 1 * 60 * 60 * 1000);
     setTimeout(() => runJob('PersonalDiscovery', refreshPersonalDiscoveryForAllUsers), 30000);

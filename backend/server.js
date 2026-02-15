@@ -128,6 +128,8 @@ app.use("/api/users", usersRoutes);
 
 import jobsRoutes from "./src/routes/jobs.routes.js";
 import issuesRoutes from "./src/routes/issues.routes.js";
+import jellyfinRoutes from "./src/routes/jellyfin.routes.js";
+import plexRoutes from "./src/routes/plex.routes.js";
 
 // ... existing code ...
 
@@ -141,6 +143,8 @@ app.use("/api/settings", settingsRoutes);
 app.use("/api/jobs", jobsRoutes);
 app.use("/api/issues", issuesRoutes);
 app.use("/api/navidrome", navidromeRoutes);
+app.use("/api/jellyfin", jellyfinRoutes);
+app.use("/api/plex", plexRoutes);
 app.use("/api/lidarr", lidarrRoutes);
 app.use("/api", discoveryRoutes);
 app.use("/api/search", searchRoutes);

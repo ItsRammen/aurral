@@ -41,7 +41,21 @@ const User = sequelize.define('User', {
     navidromeConfig: { // Admin/Server config for this user (if admin)
         type: DataTypes.JSON,
         allowNull: true
-    }
+    },
+    // Jellyfin integration fields
+    jellyfinConfig: { // Admin/Server config: { url, apiKey }
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    jellyfinUserId: DataTypes.STRING,
+    jellyfinToken: DataTypes.STRING,
+    // Plex integration fields
+    plexConfig: { // Admin/Server config: { url, token, machineId }
+        type: DataTypes.JSON,
+        allowNull: true
+    },
+    plexToken: DataTypes.STRING,
+    plexMachineId: DataTypes.STRING
 });
 
 export default User;

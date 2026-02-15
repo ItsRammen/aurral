@@ -364,6 +364,82 @@ export const triggerDiscoveryRefresh = async () => {
   return response.data;
 };
 
+// --- Jellyfin API ---
+export const saveJellyfinConfig = async (config) => {
+  const response = await api.post("/jellyfin/config", config);
+  return response.data;
+};
+
+export const getJellyfinStatus = async () => {
+  const response = await api.get("/jellyfin/status");
+  return response.data;
+};
+
+export const deleteJellyfinConfig = async () => {
+  const response = await api.delete("/jellyfin/config");
+  return response.data;
+};
+
+export const getJellyfinPlaybackUrl = async (artist, track) => {
+  const response = await api.get("/jellyfin/search-play", {
+    params: { artist, track },
+  });
+  return response.data;
+};
+
+export const getJellyfinTrackInfo = async (itemId) => {
+  const response = await api.get(`/jellyfin/track/${itemId}`);
+  return response.data;
+};
+
+export const verifyJellyfinUser = async (username, password) => {
+  const response = await api.post("/jellyfin/verify-user", { username, password });
+  return response.data;
+};
+
+export const unlinkJellyfinUser = async () => {
+  const response = await api.delete("/jellyfin/user-link");
+  return response.data;
+};
+
+export const runJellyfinJob = async () => {
+  const response = await api.post("/jobs/refresh-jellyfin");
+  return response.data;
+};
+
+// --- Plex API ---
+export const savePlexConfig = async (config) => {
+  const response = await api.post("/plex/config", config);
+  return response.data;
+};
+
+export const getPlexStatus = async () => {
+  const response = await api.get("/plex/status");
+  return response.data;
+};
+
+export const deletePlexConfig = async () => {
+  const response = await api.delete("/plex/config");
+  return response.data;
+};
+
+export const getPlexPlaybackUrl = async (artist, track) => {
+  const response = await api.get("/plex/search-play", {
+    params: { artist, track },
+  });
+  return response.data;
+};
+
+export const getPlexTrackInfo = async (ratingKey) => {
+  const response = await api.get(`/plex/track/${ratingKey}`);
+  return response.data;
+};
+
+export const runPlexJob = async () => {
+  const response = await api.post("/jobs/refresh-plex");
+  return response.data;
+};
+
 export { api };
 export default api;
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Database, RefreshCw, Trash2, TrendingUp, HardDrive, Image, CheckCircle2, XCircle, Clock } from 'lucide-react';
-import api, { checkHealth, runNavidromeJob, getJobStatus, getSystemStats, getNavidromeStatus } from '../../utils/api';
+import api, { checkHealth, runNavidromeJob, runJellyfinJob, runPlexJob, getJobStatus, getSystemStats, getNavidromeStatus, getJellyfinStatus, getPlexStatus } from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
 import {
     SettingsCard,
@@ -15,9 +15,13 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
     const [refreshingPersonal, setRefreshingPersonal] = useState(false);
     const [clearingCache, setClearingCache] = useState(false);
     const [runningNavidromeJob, setRunningNavidromeJob] = useState(false);
+    const [runningJellyfinJob, setRunningJellyfinJob] = useState(false);
+    const [runningPlexJob, setRunningPlexJob] = useState(false);
     const [systemStats, setSystemStats] = useState(null);
     const [loadingStats, setLoadingStats] = useState(true);
     const [navidromeConnected, setNavidromeConnected] = useState(false);
+    const [jellyfinConnected, setJellyfinConnected] = useState(false);
+    const [plexConnected, setPlexConnected] = useState(false);
 
     useEffect(() => {
         fetchSystemStats();
@@ -50,11 +54,16 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
 
     const checkNavidromeStatus = async () => {
         try {
-            const status = await getNavidromeStatus();
-            setNavidromeConnected(status.connected);
+            const [naviStatus, jellyStatus, plxStatus] = await Promise.all([
+                getNavidromeStatus(),
+                getJellyfinStatus(),
+                getPlexStatus(),
+            ]);
+            setNavidromeConnected(naviStatus.connected);
+            setJellyfinConnected(jellyStatus.connected);
+            setPlexConnected(plxStatus.connected);
         } catch (err) {
-            console.error("Failed to check Navidrome status:", err);
-            setNavidromeConnected(false);
+            console.error("Failed to check streaming service status:", err);
         }
     };
 
@@ -120,6 +129,38 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
         }
     };
 
+    const handleRunJellyfinJob = async () => {
+        setRunningJellyfinJob(true);
+        try {
+            await runJellyfinJob();
+            showSuccess("Jellyfin refresh job started");
+            setTimeout(async () => {
+                const jobsData = await getJobStatus();
+                setJobs(jobsData);
+            }, 1000);
+        } catch (err) {
+            showError("Failed to start job");
+        } finally {
+            setRunningJellyfinJob(false);
+        }
+    };
+
+    const handleRunPlexJob = async () => {
+        setRunningPlexJob(true);
+        try {
+            await runPlexJob();
+            showSuccess("Plex refresh job started");
+            setTimeout(async () => {
+                const jobsData = await getJobStatus();
+                setJobs(jobsData);
+            }, 1000);
+        } catch (err) {
+            showError("Failed to start job");
+        } finally {
+            setRunningPlexJob(false);
+        }
+    };
+
     const getLastRun = (jobName) => {
         const job = jobs.filter(j => j.name === jobName)
             .sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt))[0];
@@ -143,6 +184,12 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
                 break;
             case 'NavidromeSync':
                 handleRunNavidromeJob();
+                break;
+            case 'JellyfinSync':
+                handleRunJellyfinJob();
+                break;
+            case 'PlexSync':
+                handleRunPlexJob();
                 break;
             default:
                 console.warn(`Unknown job: ${jobName}`);

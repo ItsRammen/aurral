@@ -9,7 +9,7 @@ export default function SettingsTabs({ activeTab, setActiveTab, connectionStatus
             label: 'Integrations',
             icon: Music,
             hasStatus: true,
-            isConnected: connectionStatus.lidarr || connectionStatus.navidrome || connectionStatus.lastfm
+            isConnected: connectionStatus.lidarr || connectionStatus.navidrome || connectionStatus.jellyfin || connectionStatus.plex || connectionStatus.lastfm
         },
         { id: 'auth', label: 'Security', icon: Shield },
         { id: 'system', label: 'System', icon: Activity }
