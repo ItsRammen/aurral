@@ -23,9 +23,10 @@ export const authMiddleware = async (req, res, next) => {
         return next();
     }
 
-    // Accept token from header or query param
+    // Accept token from header
     let token = req.headers.authorization?.split(" ")[1];
-    if (!token && req.query.token) {
+    // Only allow query param token for image proxy endpoint (avoids leaking tokens in logs/referrers)
+    if (!token && req.query.token && /^\/api\/artists\/[0-9a-f-]+\/image$/.test(req.path)) {
         token = req.query.token;
     }
 

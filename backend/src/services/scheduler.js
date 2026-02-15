@@ -69,6 +69,10 @@ export const initScheduler = async () => {
     // Retention Policy: Cleanup resolved issues daily
     setTimeout(cleanupResolvedIssues, 60000); // Run once on startup after 1 min
     setInterval(cleanupResolvedIssues, 24 * 60 * 60 * 1000); // Run daily
+
+    // JobLog Cleanup: Remove old entries daily
+    setTimeout(cleanupOldJobLogs, 90000); // Run once on startup after 1.5 min
+    setInterval(cleanupOldJobLogs, 24 * 60 * 60 * 1000); // Run daily
 };
 
 
@@ -100,3 +104,24 @@ export const cleanupResolvedIssues = async () => {
     }
 };
 
+// Cleanup old job log entries (keep last 30 days)
+export const cleanupOldJobLogs = async () => {
+    try {
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - 30);
+
+        const deletedCount = await db.JobLog.destroy({
+            where: {
+                startedAt: {
+                    [Op.lt]: cutoffDate
+                }
+            }
+        });
+
+        if (deletedCount > 0) {
+            console.log(`[Scheduler] Cleaned up ${deletedCount} job log entries older than 30 days.`);
+        }
+    } catch (error) {
+        console.error("[Scheduler] Failed to cleanup old job logs:", error);
+    }
+};

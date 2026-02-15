@@ -155,7 +155,26 @@ router.post("/test-lastfm", requirePermission(PERMISSIONS.ADMIN), async (req, re
 
 router.post("/", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) => {
     try {
-        const updates = req.body;
+        const body = req.body;
+
+        // Allowlist: only accept known, safe fields
+        const ALLOWED_FIELDS = [
+            'lidarrUrl', 'lidarrApiKey', 'lastfmApiKey', 'contactEmail',
+            'monitored', 'searchForMissingAlbums', 'albumFolders',
+            'qualityProfileId', 'metadataProfileId', 'rootFolderPath',
+            'appName', 'appUrl', 'defaultPermissions', 'discoveryRefreshInterval',
+            'issueRetentionDays', 'proxyTrusted',
+            'oidcEnabled', 'oidcProviderName', 'oidcClientId', 'oidcClientSecret',
+            'oidcIssuerUrl', 'oidcAuthorizationUrl', 'oidcTokenUrl',
+            'oidcUserInfoUrl', 'oidcLogoutUrl', 'oidcCallbackUrl'
+        ];
+
+        const updates = {};
+        for (const field of ALLOWED_FIELDS) {
+            if (field in body) {
+                updates[field] = body[field];
+            }
+        }
 
         // Get current values for comparison
         const currentSettings = await loadSettings();
@@ -163,7 +182,6 @@ router.post("/", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) =>
         const oldLidarrApiKey = currentSettings.lidarrApiKey;
         const oldDiscoveryRefreshInterval = currentSettings.discoveryRefreshInterval;
 
-        // Merge updates (only updated fields)
         // Ensure defaultPermissions is array if present
         if (updates.defaultPermissions && !Array.isArray(updates.defaultPermissions)) {
             updates.defaultPermissions = [PERMISSIONS.REQUEST];

@@ -109,6 +109,16 @@ if (fs.existsSync(frontendDistPath)) {
 // effectively blocks access to anything below this that isn't excluded inside the middleware itself
 app.use(authMiddleware);
 
+// Strict rate limiter for login endpoint (brute-force protection)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 attempts per window
+  message: { error: "Too many login attempts, please try again later" },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/api/auth/login", loginLimiter);
+
 // Routes
 app.use("/api/auth", authRoutes);
 
@@ -199,7 +209,7 @@ app.get("/api/health", async (req, res) => {
   });
 });
 
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
   console.log(`Server running on port ${PORT}`);
   const settings = await loadSettings();
 
@@ -227,3 +237,21 @@ app.listen(PORT, async () => {
 // Centralized Error Handler
 import { errorHandler } from "./src/middleware/errorHandler.js";
 app.use(errorHandler);
+
+// Graceful Shutdown
+const shutdown = async (signal) => {
+  console.log(`\n${signal} received. Shutting down gracefully...`);
+  try {
+    server.close(() => {
+      console.log('HTTP server closed.');
+    });
+    await db.sequelize.close();
+    console.log('Database connection closed.');
+  } catch (err) {
+    console.error('Error during shutdown:', err);
+  }
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
