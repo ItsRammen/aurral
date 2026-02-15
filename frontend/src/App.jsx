@@ -3,9 +3,11 @@ import {
   Routes,
   Route,
   Navigate,
+  Outlet,
 } from "react-router-dom";
 import { useState, useEffect, Suspense, lazy } from "react";
 import Layout from "./components/Layout";
+import ErrorBoundary from "./components/ErrorBoundary";
 import { checkHealth } from "./utils/api";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ToastProvider } from "./contexts/ToastContext";
@@ -29,7 +31,7 @@ const ProfilePage = lazy(() => import("./pages/ProfilePage"));
 const IssuesPage = lazy(() => import("./pages/IssuesPage"));
 
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, isLoading, needsSetup } = useAuth(); // needsSetup logic needs to be robust
+  const { isAuthenticated, isLoading, needsSetup } = useAuth();
 
   if (isLoading) {
     return (
@@ -43,25 +45,19 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/setup" replace />;
   }
 
-  // If initial setup is required, redirect to setup page
-  // We need a robust way to check "needs setup" globally. 
-  // For now, let's assume /setup is public and triggered by backend state or auth failure?
-  // Let's implement based on user being null but no token.
-  // Actually, let's just protect standard routes.
-
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  return children;
+  return children || <Outlet />;
 };
 
-const PermissionRoute = ({ children, permission }) => {
+const PermissionRoute = ({ permission }) => {
   const { hasPermission } = useAuth();
   if (!hasPermission(permission)) {
     return <Navigate to="/" replace />;
   }
-  return children;
+  return <Outlet />;
 };
 
 function AppContent() {
@@ -91,6 +87,15 @@ function AppContent() {
     }
   }, [isAuthenticated]);
 
+  // Shared layout wrapper for all protected routes
+  const ProtectedLayout = () => (
+    <ProtectedRoute>
+      <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
+        <Outlet />
+      </Layout>
+    </ProtectedRoute>
+  );
+
   return (
     <Router>
       <Suspense fallback={
@@ -102,81 +107,26 @@ function AppContent() {
           <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Login />} />
           <Route path="/setup" element={needsSetup ? <SetupPage /> : <Navigate to="/" replace />} />
 
-          <Route path="/" element={
-            <ProtectedRoute>
-              <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
-                <DiscoverPage lidarrConfigured={lidarrConfigured} />
-              </Layout>
-            </ProtectedRoute>
-          } />
+          {/* All protected routes share Layout */}
+          <Route element={<ProtectedLayout />}>
+            <Route path="/" element={<DiscoverPage lidarrConfigured={lidarrConfigured} />} />
+            <Route path="/search" element={<SearchResultsPage />} />
+            <Route path="/library" element={<LibraryPage />} />
+            <Route path="/requests" element={<RequestsPage />} />
+            <Route path="/artist/:mbid" element={<ArtistDetailsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/issues" element={<IssuesPage />} />
 
-          <Route path="/search" element={
-            <ProtectedRoute>
-              <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
-                <SearchResultsPage />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            {/* Admin-only routes */}
+            <Route element={<PermissionRoute permission={PERMISSIONS.ADMIN} />}>
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
 
-          <Route path="/library" element={
-            <ProtectedRoute>
-              <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
-                <LibraryPage />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/requests" element={
-            <ProtectedRoute>
-              <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
-                <RequestsPage />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/artist/:mbid" element={
-            <ProtectedRoute>
-              <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
-                <ArtistDetailsPage />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/settings" element={
-            <ProtectedRoute>
-              <PermissionRoute permission={PERMISSIONS.ADMIN}>
-                <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
-                  <SettingsPage />
-                </Layout>
-              </PermissionRoute>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/users" element={
-            <ProtectedRoute>
-              <PermissionRoute permission={PERMISSIONS.MANAGE_USERS}>
-                <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
-                  <UsersPage />
-                </Layout>
-              </PermissionRoute>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/profile" element={
-            <ProtectedRoute>
-              <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
-                <ProfilePage />
-              </Layout>
-            </ProtectedRoute>
-          } />
-
-          <Route path="/issues" element={
-            <ProtectedRoute>
-              <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
-                <IssuesPage />
-              </Layout>
-            </ProtectedRoute>
-          } />
+            {/* User management routes */}
+            <Route element={<PermissionRoute permission={PERMISSIONS.MANAGE_USERS} />}>
+              <Route path="/users" element={<UsersPage />} />
+            </Route>
+          </Route>
 
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
@@ -187,17 +137,19 @@ function AppContent() {
 
 function App() {
   return (
-    <ThemeProvider>
-      <ToastProvider>
-        <AuthProvider>
-          <PlayerProvider>
-            <AppContent />
-            <MiniPlayer />
-            <ReloadPrompt />
-          </PlayerProvider>
-        </AuthProvider>
-      </ToastProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <PlayerProvider>
+              <AppContent />
+              <MiniPlayer />
+              <ReloadPrompt />
+            </PlayerProvider>
+          </AuthProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

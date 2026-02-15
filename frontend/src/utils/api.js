@@ -232,25 +232,28 @@ export const getPersonalDiscovery = async (limit = 20) => {
   return response.data;
 };
 
+// Deduplication helper: prevents duplicate concurrent requests for the same key
 const activeRequests = new Map();
-
-export const getDashboard = async () => {
-  if (activeRequests.has("dashboard")) {
-    return activeRequests.get("dashboard");
+const dedup = (key, fn) => {
+  if (activeRequests.has(key)) {
+    return activeRequests.get(key);
   }
-
   const promise = (async () => {
     try {
-      const response = await api.get("/dashboard");
-      return response.data;
+      return await fn();
     } finally {
-      activeRequests.delete("dashboard");
+      activeRequests.delete(key);
     }
   })();
-
-  activeRequests.set("dashboard", promise);
+  activeRequests.set(key, promise);
   return promise;
 };
+
+export const getDashboard = () =>
+  dedup("dashboard", async () => {
+    const response = await api.get("/dashboard");
+    return response.data;
+  });
 
 export const getRelatedArtists = async (limit = 20) => {
   const response = await api.get("/discover/related", {

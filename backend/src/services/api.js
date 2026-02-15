@@ -119,8 +119,7 @@ export const lidarrRequest = async (endpoint, method = "GET", data = null) => {
     const url = LIDARR_URL();
 
     if (!apiKey) {
-        // Only throw if we actually need it. Warning handles loose setups.
-        // throw new Error("Lidarr API key not configured");
+        console.warn("lidarrRequest: No API key configured, skipping request to", endpoint);
         return null;
     }
 
