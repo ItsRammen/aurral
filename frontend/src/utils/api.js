@@ -304,6 +304,13 @@ export const getNavidromePlaybackUrl = async (artist, track) => {
   return response.data;
 };
 
+export const getNavidromeAlbum = async (artist, album) => {
+  const response = await api.get("/navidrome/album-play", {
+    params: { artist, album },
+  });
+  return response.data;
+};
+
 export const getNavidromeTrackInfo = async (trackId) => {
   const response = await api.get(`/navidrome/track/${trackId}`);
   return response.data;
@@ -387,6 +394,13 @@ export const getJellyfinPlaybackUrl = async (artist, track) => {
   return response.data;
 };
 
+export const getJellyfinAlbum = async (artist, album) => {
+  const response = await api.get("/jellyfin/album-play", {
+    params: { artist, album },
+  });
+  return response.data;
+};
+
 export const getJellyfinTrackInfo = async (itemId) => {
   const response = await api.get(`/jellyfin/track/${itemId}`);
   return response.data;
@@ -426,6 +440,13 @@ export const deletePlexConfig = async () => {
 export const getPlexPlaybackUrl = async (artist, track) => {
   const response = await api.get("/plex/search-play", {
     params: { artist, track },
+  });
+  return response.data;
+};
+
+export const getPlexAlbum = async (artist, album) => {
+  const response = await api.get("/plex/album-play", {
+    params: { artist, album },
   });
   return response.data;
 };

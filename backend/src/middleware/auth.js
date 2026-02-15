@@ -25,9 +25,16 @@ export const authMiddleware = async (req, res, next) => {
 
     // Accept token from header
     let token = req.headers.authorization?.split(" ")[1];
-    // Only allow query param token for image proxy endpoint (avoids leaking tokens in logs/referrers)
-    if (!token && req.query.token && /^\/api\/artists\/[0-9a-f-]+\/image$/.test(req.path)) {
-        token = req.query.token;
+    // Only allow query param token for specific media endpoints (audio/images)
+    if (!token && req.query.token) {
+        const allowedQueryPaths = [
+            /^\/api\/artists\/[0-9a-f-]+\/image$/, // Artist images
+            /^\/api\/(plex|jellyfin|navidrome)\/(stream|cover)\//, // Streaming & Covers
+        ];
+
+        if (allowedQueryPaths.some(regex => regex.test(req.path))) {
+            token = req.query.token;
+        }
     }
 
     if (!token) {

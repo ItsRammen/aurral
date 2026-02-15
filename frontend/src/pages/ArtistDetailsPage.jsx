@@ -40,12 +40,11 @@ import {
   updateLidarrArtist,
   toggleLikeArtist,
   getLikedArtists,
-  getNavidromeStatus,
-  getNavidromePlaybackUrl,
 } from "../utils/api";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import { usePlayer } from "../contexts/PlayerContext";
+import { useStreaming } from "../contexts/StreamingContext";
 import AddArtistModal from "../components/AddArtistModal";
 import ArtistSettingsModal from "../components/ArtistSettingsModal";
 import AlbumTracksModal from "../components/AlbumTracksModal";
@@ -85,13 +84,13 @@ function ArtistDetailsPage() {
   const [releaseSearch, setReleaseSearch] = useState("");
   const [releaseSort, setReleaseSort] = useState("year-desc");
   const [activeReleaseTab, setActiveReleaseTab] = useState("all");
-  const [navidromeConnected, setNavidromeConnected] = useState(false);
-  const [playingOnNavidrome, setPlayingOnNavidrome] = useState(null);
+  const [playingTrack, setPlayingTrack] = useState(null);
   const [downloadQueue, setDownloadQueue] = useState([]);
   const [showReportIssueModal, setShowReportIssueModal] = useState(false);
   const [issueAlbum, setIssueAlbum] = useState(null);
   const { showSuccess, showError } = useToast();
-  const { play } = usePlayer();
+  const { play, playQueue } = usePlayer();
+  const { isStreamingAvailable, activeService, searchAndPlay, searchAlbum, getCoverUrl } = useStreaming();
   const { user } = useAuth();
 
   useEffect(() => {
@@ -153,17 +152,7 @@ function ArtistDetailsPage() {
     fetchArtistData();
   }, [mbid]);
 
-  useEffect(() => {
-    const checkNavi = async () => {
-      try {
-        const status = await getNavidromeStatus();
-        setNavidromeConnected(status.connected);
-      } catch (e) {
-        console.error("Navidrome status check failed:", e);
-      }
-    };
-    checkNavi();
-  }, []);
+  // Streaming status is now provided by StreamingContext
 
   // Poll download queue for active downloads
   useEffect(() => {
@@ -404,35 +393,53 @@ function ArtistDetailsPage() {
     }
   };
 
-  const handlePlayOnNavidrome = async (e, release) => {
+  const handlePlayOnStreaming = async (e, release) => {
     e.stopPropagation();
-    if (!navidromeConnected || !artist) return;
+    if (!isStreamingAvailable || !artist) return;
 
-    setPlayingOnNavidrome(release.id);
+    setPlayingTrack(release.id);
     try {
-      // Search for the album/track on Navidrome
-      const result = await getNavidromePlaybackUrl(artist.name, release.title);
+      // Try to find the full album first
+      console.log(`Searching for album: ${release.title}`);
+      try {
+        const albumData = await searchAlbum(artist.name, release.title);
 
-      // Extract track ID from the playback URL (format: #!/song/{id})
-      const trackIdMatch = result.playbackUrl.match(/#!\/song\/(.+)$/);
-      if (!trackIdMatch) {
+        if (albumData?.tracks?.length > 0) {
+          const queueTracks = albumData.tracks.map(t => ({
+            ...t,
+            coverArt: getCoverUrl(t.coverArt || t.id)
+          }));
+
+          playQueue(queueTracks);
+          return; // Success!
+        }
+      } catch (albumErr) {
+        console.warn("Album search failed, falling back to track match:", albumErr.message);
+      }
+
+      // Fallback: search for a track with the same name
+      const result = await searchAndPlay(artist.name, release.title);
+
+      // Extract track ID from the playback URL (format: #!/song/{id} or direct ID)
+      const trackIdMatch = result.playbackUrl?.match(/#!\/song\/(.+)$/);
+      const trackId = trackIdMatch ? trackIdMatch[1] : result.trackId;
+
+      if (!trackId) {
         throw new Error("Could not extract track ID");
       }
 
-      const trackId = trackIdMatch[1];
-
-      // Play using the in-app player
       play({
         id: trackId,
         title: result.match?.title || release.title,
         artist: result.match?.artist || artist.name,
         album: result.match?.album || release.title,
-        coverArt: `/api/navidrome/cover/${trackId}`
+        coverArt: getCoverUrl(trackId),
+        source: activeService
       });
     } catch (err) {
-      showError(err.response?.data?.error || "Release not found on your Navidrome server.");
+      showError(err.response?.data?.error || "Release not found on your streaming server.");
     } finally {
-      setPlayingOnNavidrome(null);
+      setPlayingTrack(null);
     }
   };
 
@@ -1061,14 +1068,14 @@ function ArtistDetailsPage() {
                         )}
 
                         <div className="flex items-center gap-2.5">
-                          {navidromeConnected && status?.status === "available" && (
+                          {isStreamingAvailable && status?.status === "available" && (
                             <button
-                              onClick={(e) => handlePlayOnNavidrome(e, releaseGroup)}
-                              disabled={playingOnNavidrome === releaseGroup.id}
+                              onClick={(e) => handlePlayOnStreaming(e, releaseGroup)}
+                              disabled={playingTrack === releaseGroup.id}
                               className="p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl text-gray-400 hover:text-primary-500 hover:bg-primary-500/5 transition-all shadow-sm group/navi"
-                              title="Play on Navidrome"
+                              title="Play"
                             >
-                              {playingOnNavidrome === releaseGroup.id ? (
+                              {playingTrack === releaseGroup.id ? (
                                 <RefreshCw className="w-4 h-4 animate-spin" />
                               ) : (
                                 <Play className="w-4 h-4 group-hover/navi:scale-110 transition-transform fill-current text-primary-500" />

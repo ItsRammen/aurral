@@ -16,13 +16,13 @@ import {
   searchArtistsByTag,
   searchRecordings,
   searchAlbums,
-  getNavidromeStatus,
-  getNavidromePlaybackUrl,
 } from "../utils/api";
 import AddArtistModal from "../components/AddArtistModal";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ArtistImage from "../components/ArtistImage";
 import { useToast } from "../contexts/ToastContext";
+import { usePlayer } from "../contexts/PlayerContext";
+import { useStreaming } from "../contexts/StreamingContext";
 import PageHeader from "../components/PageHeader";
 
 function SearchResultsPage() {
@@ -35,27 +35,18 @@ function SearchResultsPage() {
   const [loading, setLoading] = useState(false);
   const [recordingsLoading, setRecordingsLoading] = useState(false);
   const [albumsLoading, setAlbumsLoading] = useState(false);
-  const [navidromeConnected, setNavidromeConnected] = useState(false);
-  const [playingOnNavidrome, setPlayingOnNavidrome] = useState(null); // Track ID if searching
+  const [playingTrack, setPlayingTrack] = useState(null); // Track ID if playing
   const [error, setError] = useState(null);
   const [existingArtists, setExistingArtists] = useState({});
   const [artistToAdd, setArtistToAdd] = useState(null);
   const [artistImages, setArtistImages] = useState({});
   const [songArtistData, setSongArtistData] = useState({}); // To store artist info for songs
   const navigate = useNavigate();
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
+  const { play } = usePlayer();
+  const { isStreamingAvailable, activeService, searchAndPlay, getCoverUrl } = useStreaming();
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        const status = await getNavidromeStatus();
-        setNavidromeConnected(status.connected);
-      } catch (e) {
-        console.error("Failed to fetch Navidrome status:", e);
-      }
-    };
-    init();
-  }, []);
+  // Navidrome status check replaced by StreamingContext
 
   useEffect(() => {
     const performSearch = async () => {
@@ -165,18 +156,32 @@ function SearchResultsPage() {
     showSuccess(`Successfully added ${artist.name} to Lidarr!`);
   };
 
-  const handlePlayOnNavidrome = async (e, track) => {
+  const handlePlayOnStreaming = async (e, track) => {
     e.stopPropagation();
-    if (!navidromeConnected) return;
+    if (!isStreamingAvailable) return;
 
-    setPlayingOnNavidrome(track.mbid || track.name);
+    setPlayingTrack(track.mbid || track.name);
     try {
-      const result = await getNavidromePlaybackUrl(track.artist, track.name);
-      window.open(result.playbackUrl, "_blank");
+      const result = await searchAndPlay(track.artist, track.name);
+
+      // Extract track ID
+      const trackIdMatch = result.playbackUrl?.match(/#!\/song\/(.+)$/);
+      const trackId = trackIdMatch ? trackIdMatch[1] : result.trackId;
+
+      if (!trackId) throw new Error("Could not extract track ID");
+
+      play({
+        id: trackId,
+        title: result.match?.title || track.name,
+        artist: result.match?.artist || track.artist,
+        album: result.match?.album || "Unknown Album",
+        coverArt: getCoverUrl(trackId),
+        source: activeService
+      });
     } catch (err) {
-      showError(err.response?.data?.error || "Track not found on your Navidrome server.");
+      showError(err.response?.data?.error || "Track not found on your streaming server.");
     } finally {
-      setPlayingOnNavidrome(null);
+      setPlayingTrack(null);
     }
   };
 
@@ -438,6 +443,25 @@ function SearchResultsPage() {
                                     by {track.artist}
                                   </p>
                                 </div>
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handlePlayOnStreaming(e, track);
+                                  }}
+                                  disabled={playingTrack === (track.mbid || track.name)}
+                                  className={`p-2 rounded-full shadow-lg ${isStreamingAvailable
+                                    ? "bg-white dark:bg-gray-800 text-gray-400 hover:text-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20"
+                                    : "bg-gray-100 dark:bg-gray-800 text-gray-300 cursor-not-allowed"
+                                    } transition-all opacity-0 group-hover:opacity-100`}
+                                  title={isStreamingAvailable ? "Play" : "No streaming service connected"}
+                                >
+                                  {playingTrack === (track.mbid || track.name) ? (
+                                    <RefreshCw className="w-5 h-5 animate-spin" />
+                                  ) : (
+                                    <Play className="w-5 h-5 fill-current" />
+                                  )}
+                                </button>
 
                               </div>
                             ))}

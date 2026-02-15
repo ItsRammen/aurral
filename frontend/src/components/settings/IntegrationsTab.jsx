@@ -7,6 +7,7 @@ import {
     testLidarrConnection, testLastfmConnection, triggerDiscoveryRefresh
 } from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
+import { useStreaming } from '../../contexts/StreamingContext';
 import {
     SettingsCard,
     SettingsCardHeader,
@@ -34,6 +35,7 @@ export default function IntegrationsTab({
     setPlexConfig: updatePlexConfig,
 }) {
     const { showSuccess, showError } = useToast();
+    const { setDefaultService, refreshStreamingStatus } = useStreaming();
     const [connectingNavidrome, setConnectingNavidrome] = useState(false);
     const [showNavidromeForm, setShowNavidromeForm] = useState(false);
     const [connectingJellyfin, setConnectingJellyfin] = useState(false);
@@ -55,6 +57,7 @@ export default function IntegrationsTab({
                 setNavidromeStatus({ connected: true, url: navidromeConfig.url, username: navidromeConfig.username });
                 setShowNavidromeForm(false);
                 updateNavidromeConfig(prev => ({ ...prev, password: "" }));
+                refreshStreamingStatus();
             }
         } catch (err) {
             showError(err.response?.data?.error || "Failed to connect to Navidrome");
@@ -70,6 +73,7 @@ export default function IntegrationsTab({
             showSuccess("Navidrome disconnected");
             setNavidromeStatus({ connected: false });
             updateNavidromeConfig({ url: "", username: "", password: "" });
+            refreshStreamingStatus();
         } catch (err) {
             showError("Failed to disconnect Navidrome");
         }
@@ -85,6 +89,7 @@ export default function IntegrationsTab({
                 showSuccess("Jellyfin connected successfully");
                 setJellyfinStatus({ connected: true, url: jellyfinConfig.url });
                 setShowJellyfinForm(false);
+                refreshStreamingStatus();
             }
         } catch (err) {
             showError(err.response?.data?.error || "Failed to connect to Jellyfin");
@@ -100,6 +105,7 @@ export default function IntegrationsTab({
             showSuccess("Jellyfin disconnected");
             setJellyfinStatus({ connected: false });
             updateJellyfinConfig({ url: "", apiKey: "" });
+            refreshStreamingStatus();
         } catch (err) {
             showError("Failed to disconnect Jellyfin");
         }
@@ -115,6 +121,7 @@ export default function IntegrationsTab({
                 showSuccess(`Plex connected successfully (${response.config?.serverName || 'Plex'})`);
                 setPlexStatus({ connected: true, url: plexConfig.url });
                 setShowPlexForm(false);
+                refreshStreamingStatus();
             }
         } catch (err) {
             showError(err.response?.data?.error || "Failed to connect to Plex");
@@ -130,6 +137,7 @@ export default function IntegrationsTab({
             showSuccess("Plex disconnected");
             setPlexStatus({ connected: false });
             updatePlexConfig({ url: "", token: "" });
+            refreshStreamingStatus();
         } catch (err) {
             showError("Failed to disconnect Plex");
         }
@@ -256,6 +264,25 @@ export default function IntegrationsTab({
             <SettingsCard>
                 <SettingsSectionTitle>Streaming Services</SettingsSectionTitle>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 -mt-4">Connect your media streaming servers to sync your library.</p>
+
+                {/* Default Service Selector */}
+                {[navidromeStatus.connected, jellyfinStatus.connected, plexStatus.connected].filter(Boolean).length > 1 && (
+                    <div className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800/50 p-2 rounded-lg border border-gray-100 dark:border-gray-700 mb-6">
+                        <span className="text-sm font-medium text-gray-600 dark:text-gray-300 pl-1">Default:</span>
+                        <select
+                            value={settings.defaultStreamingService || 'navidrome'}
+                            onChange={(e) => {
+                                handleUpdate('defaultStreamingService', e.target.value);
+                                setDefaultService(e.target.value);
+                            }}
+                            className="input input-sm bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 w-32 focus:ring-primary-500"
+                        >
+                            {navidromeStatus.connected && <option value="navidrome">Navidrome</option>}
+                            {jellyfinStatus.connected && <option value="jellyfin">Jellyfin</option>}
+                            {plexStatus.connected && <option value="plex">Plex</option>}
+                        </select>
+                    </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {/* Navidrome Card */}

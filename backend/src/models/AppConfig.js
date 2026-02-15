@@ -59,6 +59,10 @@ const AppConfig = sequelize.define('AppConfig', {
         type: DataTypes.INTEGER,
         defaultValue: 30
     },
+    defaultStreamingService: {
+        type: DataTypes.STRING,
+        defaultValue: 'navidrome'
+    },
 
     proxyTrusted: {
         type: DataTypes.BOOLEAN,

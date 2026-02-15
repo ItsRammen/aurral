@@ -48,6 +48,13 @@ export function PlayerProvider({ children }) {
         }
     }, [queue, play, stop]);
 
+    const playQueue = useCallback((tracks) => {
+        if (!tracks || tracks.length === 0) return;
+        const [first, ...rest] = tracks;
+        setQueue(rest);
+        play(first);
+    }, [play]);
+
     const value = {
         currentTrack,
         isPlaying,
@@ -59,6 +66,7 @@ export function PlayerProvider({ children }) {
         stop,
         addToQueue,
         playNext,
+        playQueue,
         setIsPlaying
     };
 

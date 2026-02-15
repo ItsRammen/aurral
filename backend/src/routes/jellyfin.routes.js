@@ -26,6 +26,10 @@ router.post("/config", async (req, res, next) => {
         return res.status(400).json({ error: "URL and API Key are required" });
     }
 
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        return res.status(400).json({ error: "URL must start with http:// or https://" });
+    }
+
     const cleanUrl = url.replace(/\/$/, "");
 
     // Test connection
@@ -199,7 +203,7 @@ router.get("/search-play", async (req, res, next) => {
 
         if (items.length === 0) {
             const err = new Error("Track not found on Jellyfin");
-            err.status = 404;
+            err.statusCode = 404;
             throw err;
         }
 
@@ -220,6 +224,84 @@ router.get("/search-play", async (req, res, next) => {
         });
     } catch (e) {
         console.error("Jellyfin Search Exception:", e.message);
+        next(e);
+    }
+});
+
+// GET /api/jellyfin/album-play - Search for an album and return tracks
+router.get("/album-play", async (req, res, next) => {
+    const { artist, album } = req.query;
+
+    try {
+        let config = req.user.jellyfinConfig;
+        if (!config) config = await getGlobalJellyfinConfig();
+
+        if (!config) {
+            return res.status(400).json({ error: "Jellyfin not configured" });
+        }
+
+        const token = req.user.jellyfinToken || config.apiKey;
+        const userId = req.user.jellyfinUserId;
+
+        // Search for the album
+        const searchUrl = `${config.url}/Items?searchTerm=${encodeURIComponent(album)}&IncludeItemTypes=MusicAlbum&Recursive=true${userId ? `&UserId=${userId}` : ''}`;
+
+        const response = await axios.get(searchUrl, {
+            headers: { "X-Emby-Token": token, "Authorization": `MediaBrowser Token="${token}"` },
+            timeout: 15000
+        });
+
+        const items = response.data?.Items || [];
+
+        // Filter by Artist
+        const albumMatch = items.find(a =>
+            (a.AlbumArtist || "").toLowerCase().includes(artist.toLowerCase()) ||
+            (a.Artists?.[0] || "").toLowerCase().includes(artist.toLowerCase())
+        );
+
+        if (!albumMatch) {
+            console.warn(`[Jellyfin] Album not found: "${album}" by "${artist}"`);
+            const err = new Error("Album not found on Jellyfin");
+            err.statusCode = 404;
+            throw err;
+        }
+
+        console.log(`[Jellyfin] Found album: "${albumMatch.Name}" (${albumMatch.Id})`);
+
+        // Fetch tracks for the album
+        const tracksUrl = `${config.url}/Items?ParentId=${albumMatch.Id}&IncludeItemTypes=Audio&Recursive=true&SortBy=ParentIndexNumber,IndexNumber&Fields=ImageTags${userId ? `&UserId=${userId}` : ''}`;
+        const tracksResponse = await axios.get(tracksUrl, {
+            headers: { "X-Emby-Token": token, "Authorization": `MediaBrowser Token="${token}"` },
+            timeout: 10000
+        });
+
+        const tracks = tracksResponse.data?.Items || [];
+
+        if (tracks.length === 0) {
+            throw new Error("No tracks found for this album");
+        }
+
+        const mappedTracks = tracks.map(t => ({
+            id: t.Id,
+            title: t.Name,
+            artist: t.AlbumArtist || t.Artists?.[0] || artist,
+            album: t.Album || album,
+            duration: Math.round((t.RunTimeTicks || 0) / 10000000), // Ticks to seconds
+            coverArt: t.ImageTags?.Primary ? t.Id : albumMatch.Id,
+            source: 'jellyfin'
+        }));
+
+        res.json({
+            id: albumMatch.Id,
+            title: albumMatch.Name,
+            artist: albumMatch.AlbumArtist || albumMatch.Artists?.[0],
+            tracks: mappedTracks
+        });
+
+    } catch (e) {
+        if (e.status !== 404) {
+            console.error("Jellyfin Album Play Error:", e.message);
+        }
         next(e);
     }
 });

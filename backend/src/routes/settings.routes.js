@@ -163,7 +163,7 @@ router.post("/", requirePermission(PERMISSIONS.ADMIN), async (req, res, next) =>
             'monitored', 'searchForMissingAlbums', 'albumFolders',
             'qualityProfileId', 'metadataProfileId', 'rootFolderPath',
             'appName', 'appUrl', 'defaultPermissions', 'discoveryRefreshInterval',
-            'issueRetentionDays', 'proxyTrusted',
+            'issueRetentionDays', 'proxyTrusted', 'defaultStreamingService',
             'oidcEnabled', 'oidcProviderName', 'oidcClientId', 'oidcClientSecret',
             'oidcIssuerUrl', 'oidcAuthorizationUrl', 'oidcTokenUrl',
             'oidcUserInfoUrl', 'oidcLogoutUrl', 'oidcCallbackUrl'

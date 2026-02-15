@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { X, Loader, Play, Music, ExternalLink, CheckCircle, Download, AlertCircle, RefreshCw } from "lucide-react";
-import { getLidarrTracks, getNavidromeStatus, getNavidromePlaybackUrl } from "../utils/api";
+import { getLidarrTracks } from "../utils/api";
 import { usePlayer } from "../contexts/PlayerContext";
+import { useStreaming } from "../contexts/StreamingContext";
 import { useToast } from "../contexts/ToastContext";
 
 function AlbumTracksModal({ album, artistName, onClose, onRequest }) {
@@ -9,9 +10,9 @@ function AlbumTracksModal({ album, artistName, onClose, onRequest }) {
     const [loading, setLoading] = useState(true);
     const [requesting, setRequesting] = useState(false);
     const [error, setError] = useState(null);
-    const [navidromeConnected, setNavidromeConnected] = useState(false);
     const [playingTrackId, setPlayingTrackId] = useState(null);
-    const { play } = usePlayer();
+    const { play, playQueue } = usePlayer();
+    const { isStreamingAvailable, activeService, searchAndPlay, searchAlbum, getCoverUrl } = useStreaming();
 
     useEffect(() => {
         const fetchTracks = async () => {
@@ -40,27 +41,12 @@ function AlbumTracksModal({ album, artistName, onClose, onRequest }) {
 
         fetchTracks();
 
-        // Check Navidrome status
-        getNavidromeStatus().then(status => {
-            setNavidromeConnected(status.connected);
-        }).catch(() => { });
-
         // Disable body scroll
         document.body.style.overflow = "hidden";
         return () => {
             document.body.style.overflow = "unset";
         };
     }, [album]);
-
-    const handleRequest = async () => {
-        if (!onRequest) return;
-        setRequesting(true);
-        try {
-            await onRequest(album.lidarrId);
-        } finally {
-            setRequesting(false);
-        }
-    };
 
     const getYoutubeSearchUrl = (trackTitle) => {
         const query = encodeURIComponent(`${artistName} ${trackTitle}`);
@@ -78,20 +64,51 @@ function AlbumTracksModal({ album, artistName, onClose, onRequest }) {
     const handlePlayTrack = async (track) => {
         setPlayingTrackId(track.id);
         try {
-            // Search for the track on Navidrome by title and artist
-            const result = await getNavidromePlaybackUrl(artistName, track.title);
+            // Strategy 1: Search for specific track
+            console.log(`Searching for track: ${track.title}`);
+            try {
+                const result = await searchAndPlay(artistName, track.title);
+                const trackIdMatch = result.playbackUrl?.match(/#!\/song\/(.+)$/);
+                const trackId = trackIdMatch ? trackIdMatch[1] : result.trackId;
 
-            // Play using the in-app player with the Navidrome track ID
-            play({
-                id: result.trackId,
-                title: result.match?.title || track.title,
-                artist: result.match?.artist || artistName,
-                album: result.match?.album || album.title,
-                coverArt: `/api/navidrome/cover/${result.coverArtId || result.trackId}`
-            });
+                play({
+                    id: trackId,
+                    title: result.match?.title || track.title,
+                    artist: result.match?.artist || artistName,
+                    album: result.match?.album || album.title,
+                    coverArt: getCoverUrl(trackId),
+                    source: activeService
+                });
+                return;
+            } catch (err) {
+                console.warn("Direct track search failed, trying album context...", err.message);
+            }
+
+            // Strategy 2: Search for album and find track inside
+            console.log(`Searching for album context: ${album.title}`);
+            const albumData = await searchAlbum(artistName, album.title);
+
+            if (!albumData?.tracks?.length) throw new Error("Album not found or empty");
+
+            // Find the track in the album
+            const trackIndex = albumData.tracks.findIndex(t =>
+                t.title.toLowerCase().includes(track.title.toLowerCase()) ||
+                track.title.toLowerCase().includes(t.title.toLowerCase())
+            );
+
+            if (trackIndex === -1) throw new Error("Track not found in album");
+
+            // Queue from this track onwards
+            const queueTracks = albumData.tracks.slice(trackIndex).map(t => ({
+                ...t,
+                coverArt: getCoverUrl(t.coverArt || t.id)
+            }));
+
+            playQueue(queueTracks);
+
         } catch (err) {
-            console.error("Failed to find track on Navidrome:", err);
-            // Fallback to YouTube if not found
+            console.error("Failed to play track:", err);
+            // Fallback to YouTube
             window.open(getYoutubeSearchUrl(track.title), "_blank");
         } finally {
             setPlayingTrackId(null);
@@ -193,12 +210,12 @@ function AlbumTracksModal({ album, artistName, onClose, onRequest }) {
                                             </div>
 
                                             <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                {track.hasFile && navidromeConnected ? (
+                                                {track.hasFile && isStreamingAvailable ? (
                                                     <button
                                                         onClick={() => handlePlayTrack(track)}
                                                         disabled={playingTrackId === track.id}
                                                         className="btn btn-secondary btn-xs py-1 px-2 flex items-center gap-1.5 text-[10px] uppercase font-bold text-primary-600 hover:text-primary-700 dark:text-primary-500 dark:hover:text-primary-400 border-primary-100 dark:border-primary-900/30"
-                                                        title="Play with Navidrome"
+                                                        title="Play"
                                                     >
                                                         {playingTrackId === track.id ? (
                                                             <RefreshCw className="w-3 h-3 animate-spin" />

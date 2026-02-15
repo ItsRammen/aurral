@@ -13,6 +13,7 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { PlayerProvider } from "./contexts/PlayerContext";
+import { StreamingProvider } from "./contexts/StreamingContext";
 import ReloadPrompt from "./components/ReloadPrompt";
 import MiniPlayer from "./components/MiniPlayer";
 import { PERMISSIONS } from "./utils/permissions";
@@ -141,11 +142,13 @@ function App() {
       <ThemeProvider>
         <ToastProvider>
           <AuthProvider>
-            <PlayerProvider>
-              <AppContent />
-              <MiniPlayer />
-              <ReloadPrompt />
-            </PlayerProvider>
+            <StreamingProvider>
+              <PlayerProvider>
+                <AppContent />
+                <MiniPlayer />
+                <ReloadPrompt />
+              </PlayerProvider>
+            </StreamingProvider>
           </AuthProvider>
         </ToastProvider>
       </ThemeProvider>

@@ -35,6 +35,10 @@ router.post("/config", async (req, res, next) => {
         return res.status(400).json({ error: "URL, username, and password are required" });
     }
 
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        return res.status(400).json({ error: "URL must start with http:// or https://" });
+    }
+
     // Clean URL (remove trailing slash)
     const cleanUrl = url.replace(/\/$/, "");
     const salt = crypto.randomBytes(8).toString('hex');
@@ -219,7 +223,7 @@ router.get("/search-play", async (req, res, next) => {
 
         if (songs.length === 0) {
             const err = new Error("Track not found on Navidrome");
-            err.status = 404;
+            err.statusCode = 404;
             throw err;
         }
 
@@ -246,6 +250,85 @@ router.get("/search-play", async (req, res, next) => {
         });
     } catch (e) {
         console.error("Navidrome Search Exception:", e.message);
+        next(e);
+    }
+});
+
+// GET /api/navidrome/album-play - Search for an album and return tracks
+router.get("/album-play", async (req, res, next) => {
+    const { artist, album } = req.query;
+
+    try {
+        let config = req.user.navidromeConfig;
+        if (!config) config = await getGlobalNavidromeConfig();
+
+        if (!config) {
+            return res.status(400).json({ error: "Navidrome not configured" });
+        }
+
+        // Search for the album
+        const searchUrl = `${config.url}/rest/search3.view?u=${config.username}&t=${config.token}&s=${config.salt}&v=1.16.1&c=Aurral&f=json&query=${encodeURIComponent(album)}`;
+
+        const response = await axios.get(searchUrl, { timeout: 15000 });
+        const subRes = response.data['subsonic-response'];
+
+        if (subRes?.status !== 'ok') {
+            throw new Error(subRes?.error?.message || "Navidrome search failed");
+        }
+
+        const albums = subRes.searchResult3?.album || [];
+
+        // Filter by Artist
+        const albumMatch = albums.find(a =>
+            a.artist.toLowerCase().includes(artist.toLowerCase()) ||
+            artist.toLowerCase().includes(a.artist.toLowerCase())
+        );
+
+        if (!albumMatch) {
+            console.warn(`[Navidrome] Album not found: "${album}" by "${artist}"`);
+            const err = new Error("Album not found on Navidrome");
+            err.status = 404;
+            throw err;
+        }
+
+        console.log(`[Navidrome] Found album: "${albumMatch.title}" (${albumMatch.id})`);
+
+        // Get album details (includes tracks)
+        const albumUrl = `${config.url}/rest/getAlbum.view?u=${config.username}&t=${config.token}&s=${config.salt}&v=1.16.1&c=Aurral&f=json&id=${albumMatch.id}`;
+        const albumResponse = await axios.get(albumUrl, { timeout: 10000 });
+        const albumSubRes = albumResponse.data['subsonic-response'];
+
+        if (albumSubRes?.status !== 'ok' || !albumSubRes.album) {
+            throw new Error("Failed to fetch album details");
+        }
+
+        const tracks = albumSubRes.album.song || [];
+
+        if (tracks.length === 0) {
+            throw new Error("No tracks found for this album");
+        }
+
+        const mappedTracks = tracks.map(t => ({
+            id: t.id,
+            title: t.title,
+            artist: t.artist || artist,
+            album: t.album || album,
+            duration: t.duration,
+            coverArt: t.coverArt,
+            source: 'navidrome'
+        }));
+
+        res.json({
+            id: albumMatch.id,
+            title: albumMatch.title,
+            artist: albumMatch.artist,
+            tracks: mappedTracks
+        });
+
+    } catch (e) {
+        if (e.status !== 404) {
+            console.error("Navidrome Album Play Error:", e.message);
+        }
         next(e);
     }
 });

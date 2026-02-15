@@ -35,6 +35,10 @@ router.post("/config", async (req, res, next) => {
         return res.status(400).json({ error: "URL and Token are required" });
     }
 
+    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+        return res.status(400).json({ error: "URL must start with http:// or https://" });
+    }
+
     const cleanUrl = url.replace(/\/$/, "");
 
     // Test connection
@@ -112,6 +116,23 @@ router.get("/user-history", async (req, res, next) => {
 
 // --- Search & Playback ---
 
+// Helper to find the Music library section ID
+const findMusicSection = async (config) => {
+    try {
+        const response = await axios.get(`${config.url}/library/sections`, {
+            headers: plexHeaders(config.token),
+            timeout: 5000
+        });
+        const sections = response.data?.MediaContainer?.Directory || [];
+        // Look for type="artist" which is the standard for Music libraries
+        const musicSection = sections.find(s => s.type === "artist");
+        return musicSection?.key;
+    } catch (e) {
+        console.warn("Failed to find Plex music section:", e.message);
+        return null;
+    }
+};
+
 // GET /api/plex/search-play - Search for a track to play
 router.get("/search-play", async (req, res, next) => {
     const { artist, track } = req.query;
@@ -129,28 +150,83 @@ router.get("/search-play", async (req, res, next) => {
         }
 
         const token = config.token;
-        const query = `${artist} ${track}`;
+        let bestMatch = null;
 
-        // Search for music tracks (type=10 is tracks in Plex)
-        const searchUrl = `${config.url}/search?query=${encodeURIComponent(query)}&type=10&limit=10`;
+        // Strategy 1: Library-specific filter (Highest Accuracy)
+        const sectionId = await findMusicSection({ ...config, token });
 
-        const response = await axios.get(searchUrl, {
-            headers: plexHeaders(token),
-            timeout: 15000
-        });
+        if (sectionId) {
+            console.log(`[Plex] using Music Section ID: ${sectionId}`);
+            // keys: title (track name), grandparentTitle (artist), parentTitle (album)
+            // We search for the track title specifically in the music section
+            const filterUrl = `${config.url}/library/sections/${sectionId}/all?type=10&title=${encodeURIComponent(track)}`;
 
-        const items = response.data?.MediaContainer?.Metadata || [];
+            try {
+                const response = await axios.get(filterUrl, {
+                    headers: plexHeaders(token),
+                    timeout: 10000
+                });
 
-        if (items.length === 0) {
+                const items = response.data?.MediaContainer?.Metadata || [];
+
+                // Filter by Artist (grandparentTitle)
+                bestMatch = items.find(s => {
+                    const artistMatch = s.grandparentTitle?.toLowerCase() === artist.toLowerCase() ||
+                        s.grandparentTitle?.toLowerCase().includes(artist.toLowerCase());
+                    return artistMatch;
+                });
+
+                if (!bestMatch && items.length > 0) {
+                    // Looser match if exact failed
+                    bestMatch = items.find(s =>
+                        s.grandparentTitle?.toLowerCase().includes(artist.split(' ')[0].toLowerCase())
+                    );
+                }
+            } catch (err) {
+                console.warn("[Plex] Library filter failed, falling back to global search", err.message);
+            }
+        }
+
+        // Strategy 2: Global Search (Fallback)
+        if (!bestMatch) {
+            console.log(`[Plex] Strategy 1 failed/skipped. Trying global search...`);
+            let searchUrl = `${config.url}/search?query=${encodeURIComponent(track)}&type=10&limit=25`;
+
+            let response = await axios.get(searchUrl, {
+                headers: plexHeaders(token),
+                timeout: 15000
+            });
+
+            let items = response.data?.MediaContainer?.Metadata || [];
+
+            bestMatch = items.find(s =>
+                s.grandparentTitle?.toLowerCase().includes(artist.toLowerCase()) ||
+                artist.toLowerCase().includes(s.grandparentTitle?.toLowerCase())
+            );
+
+            // Strategy 3: Combined Query
+            if (!bestMatch) {
+                const query = `${artist} ${track}`;
+                searchUrl = `${config.url}/search?query=${encodeURIComponent(query)}&type=10&limit=10`;
+
+                response = await axios.get(searchUrl, {
+                    headers: plexHeaders(token),
+                    timeout: 15000
+                });
+
+                items = response.data?.MediaContainer?.Metadata || [];
+                bestMatch = items[0];
+            }
+        }
+
+        if (!bestMatch) {
+            console.warn(`[Plex] Track not found: "${track}" by "${artist}"`);
             const err = new Error("Track not found on Plex");
-            err.status = 404;
+            err.statusCode = 404;
             throw err;
         }
 
-        const bestMatch = items.find(s =>
-            s.title?.toLowerCase().includes(track.toLowerCase()) &&
-            (s.grandparentTitle || "").toLowerCase().includes(artist.toLowerCase())
-        ) || items[0];
+        console.log(`[Plex] Found match: "${bestMatch.title}" by "${bestMatch.grandparentTitle}" (${bestMatch.ratingKey})`);
 
         res.json({
             trackId: String(bestMatch.ratingKey),
@@ -163,7 +239,110 @@ router.get("/search-play", async (req, res, next) => {
             }
         });
     } catch (e) {
-        console.error("Plex Search Exception:", e.message);
+        if (e.status !== 404) {
+            console.error("Plex Search Exception:", e.message);
+        }
+        next(e);
+    }
+});
+
+// GET /api/plex/album-play - Search for an album and return tracks
+router.get("/album-play", async (req, res, next) => {
+    const { artist, album } = req.query;
+
+    try {
+        let config = req.user.plexConfig;
+        if (!config) config = await getGlobalPlexConfig();
+
+        if (!config) {
+            return res.status(400).json({ error: "Plex not configured" });
+        }
+
+        const token = config.token;
+        let albumMatch = null;
+
+        // Strategy 1: Library-specific filter
+        const sectionId = await findMusicSection({ ...config, token });
+
+        if (sectionId) {
+            console.log(`[Plex] Searching for album "${album}" in Section ${sectionId}`);
+            // type=9 is Album
+            const filterUrl = `${config.url}/library/sections/${sectionId}/all?type=9&title=${encodeURIComponent(album)}`;
+
+            try {
+                const response = await axios.get(filterUrl, {
+                    headers: plexHeaders(token),
+                    timeout: 10000
+                });
+
+                const items = response.data?.MediaContainer?.Metadata || [];
+
+                // Filter by match on Artist (parentTitle for albums usually)
+                albumMatch = items.find(a =>
+                    a.parentTitle?.toLowerCase() === artist.toLowerCase() ||
+                    a.parentTitle?.toLowerCase().includes(artist.toLowerCase())
+                );
+            } catch (err) {
+                console.warn("[Plex] Album library filter failed", err.message);
+            }
+        }
+
+        // Strategy 2: Global Search
+        if (!albumMatch) {
+            console.log(`[Plex] Album global search for "${album}"`);
+            const searchUrl = `${config.url}/search?query=${encodeURIComponent(album)}&type=9&limit=10`;
+            const response = await axios.get(searchUrl, {
+                headers: plexHeaders(token),
+                timeout: 15000
+            });
+            const items = response.data?.MediaContainer?.Metadata || [];
+
+            albumMatch = items.find(a =>
+                a.parentTitle?.toLowerCase().includes(artist.toLowerCase()) ||
+                artist.toLowerCase().includes(a.parentTitle?.toLowerCase())
+            );
+        }
+
+        if (!albumMatch) {
+            console.warn(`[Plex] Album not found: "${album}" by "${artist}"`);
+            const err = new Error("Album not found on Plex");
+            err.statusCode = 404;
+            throw err;
+        }
+
+        console.log(`[Plex] Found album: "${albumMatch.title}" (${albumMatch.ratingKey})`);
+
+        // Fetch tracks for the album
+        const tracksUrl = `${config.url}/library/metadata/${albumMatch.ratingKey}/children`;
+        const tracksResponse = await axios.get(tracksUrl, {
+            headers: plexHeaders(token),
+            timeout: 10000
+        });
+
+        const tracks = tracksResponse.data?.MediaContainer?.Metadata || [];
+
+        // Map to standard track format
+        const mappedTracks = tracks.map(t => ({
+            id: String(t.ratingKey),
+            title: t.title,
+            artist: t.grandparentTitle || artist, // grandparentTitle is artist for tracks
+            album: t.parentTitle || album,        // parentTitle is album for tracks
+            duration: Math.round((t.duration || 0) / 1000),
+            coverArt: t.thumb ? String(t.ratingKey) : String(albumMatch.ratingKey),
+            source: 'plex'
+        }));
+
+        res.json({
+            id: String(albumMatch.ratingKey),
+            title: albumMatch.title,
+            artist: albumMatch.parentTitle,
+            tracks: mappedTracks
+        });
+
+    } catch (e) {
+        if (e.status !== 404) {
+            console.error("Plex Album Play Error:", e.message);
+        }
         next(e);
     }
 });
@@ -183,7 +362,9 @@ router.get("/stream/:ratingKey", async (req, res, next) => {
         const token = config.token;
 
         // First get the track metadata to find the media part key
-        const metaResponse = await axios.get(`${config.url}/library/metadata/${ratingKey}`, {
+        const metadataUrl = `${config.url}/library/metadata/${ratingKey}`;
+
+        const metaResponse = await axios.get(metadataUrl, {
             headers: plexHeaders(token),
             timeout: 10000
         });
@@ -193,7 +374,7 @@ router.get("/stream/:ratingKey", async (req, res, next) => {
 
         if (!partKey) {
             const err = new Error("Could not find audio file for this track");
-            err.status = 404;
+            err.statusCode = 404;
             throw err;
         }
 
@@ -250,7 +431,7 @@ router.get("/track/:ratingKey", async (req, res, next) => {
         const item = response.data?.MediaContainer?.Metadata?.[0];
         if (!item) {
             const err = new Error("Track not found");
-            err.status = 404;
+            err.statusCode = 404;
             throw err;
         }
 

@@ -58,6 +58,7 @@ function SettingsPage() {
     oidcTokenUrl: "",
     oidcUserInfoUrl: "",
     oidcCallbackUrl: "",
+    defaultStreamingService: "navidrome",
   });
 
   const [navidromeConfig, setNavidromeConfig] = useState({

@@ -18,7 +18,18 @@ export const errorHandler = (err, req, res, next) => {
 
     // Log the error (can be enhanced with a logger like winston)
     if (err.statusCode === 500) {
-        console.error('🔥 ERROR 💥', err);
+        // Sanitize error object to remove secrets from Axios logs
+        const sanitizedErr = { ...err };
+        if (sanitizedErr.config?.headers) {
+            const sensitiveHeaders = ['Authorization', 'X-Plex-Token', 'X-Emby-Token'];
+            const sanitizedHeaders = { ...sanitizedErr.config.headers };
+            sensitiveHeaders.forEach(h => {
+                if (sanitizedHeaders[h]) sanitizedHeaders[h] = '***REDACTED***';
+            });
+            sanitizedErr.config = { ...sanitizedErr.config, headers: sanitizedHeaders };
+        }
+
+        console.error('🔥 ERROR 💥', sanitizedErr.message, sanitizedErr.config ? { url: sanitizedErr.config.url, headers: sanitizedErr.config.headers } : sanitizedErr);
     }
 
     // Send response
