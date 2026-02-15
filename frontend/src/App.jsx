@@ -105,7 +105,7 @@ function AppContent() {
           <Route path="/" element={
             <ProtectedRoute>
               <Layout isHealthy={isHealthy} lidarrConfigured={lidarrConfigured} lidarrStatus={lidarrStatus}>
-                <DiscoverPage />
+                <DiscoverPage lidarrConfigured={lidarrConfigured} />
               </Layout>
             </ProtectedRoute>
           } />

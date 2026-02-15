@@ -21,7 +21,6 @@ import {
   api,
   getNavidromeRecommendations,
   getNavidromeStatus,
-  checkHealth
 } from "../utils/api";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -33,7 +32,7 @@ import LoadingSpinner from "../components/LoadingSpinner";
 import TabNav from "../components/TabNav";
 import UnconfiguredOverlay from "../components/UnconfiguredOverlay";
 
-function DiscoverPage() {
+function DiscoverPage({ lidarrConfigured = true }) {
   const [data, setData] = useState(null);
   const [personalData, setPersonalData] = useState(null);
   const [requests, setRequests] = useState([]);
@@ -49,9 +48,6 @@ function DiscoverPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
-
-  // System Health State
-  const [lidarrConfigured, setLidarrConfigured] = useState(true);
 
   // Navidrome State
   const [navidromeConnected, setNavidromeConnected] = useState(false);
@@ -100,11 +96,7 @@ function DiscoverPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        // Check health first to see if configured
-        const health = await checkHealth();
-        setLidarrConfigured(health.lidarrConfigured);
-
-        if (!health.lidarrConfigured) {
+        if (!lidarrConfigured) {
           setLoading(false);
           return;
         }
@@ -146,7 +138,7 @@ function DiscoverPage() {
     };
 
     fetchData();
-  }, [user]);
+  }, [user, lidarrConfigured]);
 
   const handleAddArtistClick = (artist) => {
     setArtistToAdd(artist);

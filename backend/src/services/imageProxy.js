@@ -114,12 +114,13 @@ export const getCachedImage = async (mbid, userApiKey = null) => {
  * Clean up old cached images (older than 30 days)
  */
 export const cleanupOldImages = async () => {
+    const { Op } = await import("sequelize");
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     try {
         const oldEntries = await db.ImageCache.findAll({
             where: {
-                cachedAt: { $lt: thirtyDaysAgo }
+                cachedAt: { [Op.lt]: thirtyDaysAgo }
             }
         });
 

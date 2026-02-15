@@ -1,10 +1,12 @@
 import { db } from "../config/db.js";
+import { Op } from "sequelize";
 import { updateDiscoveryCache, refreshPersonalDiscoveryForAllUsers } from "./discovery.js";
 import { syncNavidromeHistory } from "./navidrome.js";
 import { prefetchArtistImages } from "./imageProxy.js";
 import { loadSettings } from "./api.js";
 import { startDownloadTracker } from "./downloadTracker.js";
 import { runJob } from "./jobs.js";
+import Issue from "../models/Issue.js";
 
 let discoveryInterval = null;
 
@@ -69,8 +71,6 @@ export const initScheduler = async () => {
     setInterval(cleanupResolvedIssues, 24 * 60 * 60 * 1000); // Run daily
 };
 
-import { Op } from "sequelize";
-import Issue from "../models/Issue.js";
 
 // Cleanup resolved issues based on retention policy
 export const cleanupResolvedIssues = async () => {

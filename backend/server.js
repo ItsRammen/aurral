@@ -221,7 +221,6 @@ app.listen(PORT, async () => {
   console.log(`Lidarr URL (configured): ${settings.lidarrUrl || "http://localhost:8686"}`);
 
   await probeLidarrUrl();
-  await probeLidarrUrl();
   initScheduler();
 });
 

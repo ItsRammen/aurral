@@ -34,7 +34,7 @@ export const authMiddleware = async (req, res, next) => {
     }
 
     try {
-        const secret = JWT_SECRET;
+        const secret = getJwtSecret();
         const decoded = jwt.verify(token, secret);
 
         const user = await db.User.findByPk(decoded.id);
@@ -67,4 +67,5 @@ export const requirePermission = (permission) => {
     };
 };
 
-export const JWT_SECRET = getJwtSecret(); // Export for consistent usage if needed, but preferable to use function
+// Always use the getter so env vars are read fresh
+export const JWT_SECRET = getJwtSecret();
