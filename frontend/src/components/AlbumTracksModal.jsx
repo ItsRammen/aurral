@@ -61,6 +61,18 @@ function AlbumTracksModal({ album, artistName, onClose, onRequest }) {
         return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
     };
 
+    const handleRequest = async () => {
+        if (!onRequest) return;
+        setRequesting(true);
+        try {
+            await onRequest(album);
+        } catch (error) {
+            console.error("Failed to request album:", error);
+        } finally {
+            setRequesting(false);
+        }
+    };
+
     const handlePlayTrack = async (track) => {
         setPlayingTrackId(track.id);
         try {
