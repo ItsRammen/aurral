@@ -8,6 +8,7 @@ import Play from '../models/Play.js';
 import MetadataCache from '../models/MetadataCache.js';
 import DownloadProgress from '../models/DownloadProgress.js';
 import Issue from '../models/Issue.js';
+import JobLog from '../models/JobLog.js';
 
 // Legacy LowDB export replacement
 // We export the models so other files can import `db` and access `db.User`, etc.
@@ -25,6 +26,7 @@ const db = {
     MetadataCache,
     DownloadProgress,
     Issue,
+    JobLog,
 };
 
 // Start the connection

@@ -10,15 +10,47 @@ import { syncNavidromeHistory } from "../services/navidrome.js";
 import { prefetchArtistImages } from "../services/imageProxy.js";
 import { requirePermission } from "../middleware/auth.js";
 import { PERMISSIONS } from "../config/permissions.js";
+import { runJob, getLatestJobStatus } from "../services/jobs.js";
 
 const router = express.Router();
 
 // GET /api/jobs/status - Get status of background jobs
-router.get("/status", requirePermission(PERMISSIONS.ADMIN), (req, res) => {
-    const jobs = []; // Jobs history not yet migrated to SQLite
-    // Also include discovery status if needed by frontend (though typical use is just jobs list)
-    // For now, return the jobs array as expected by SettingsPage.jsx
-    res.json(jobs);
+router.get("/status", requirePermission(PERMISSIONS.ADMIN), async (req, res) => {
+    try {
+        const jobNames = [
+            'DiscoveryRefresh',
+            'PersonalDiscovery',
+            'NavidromeSync',
+            'ImagePrefetch'
+        ];
+
+        // Fetch latest status for each job
+        // This is inefficient loop but simpler for now given few jobs
+        const statuses = await Promise.all(jobNames.map(async jobName => {
+            const latest = await db.JobLog.findOne({
+                where: { name: jobName },
+                order: [['startedAt', 'DESC']],
+                limit: 1
+            });
+
+            // If running, double check if it's actually running or stale?
+            // For now assume DB is truth.
+            // Override with memory state for discovery if available
+            if (jobName === 'DiscoveryRefresh' && discoveryCache.isUpdating) {
+                return { name: jobName, status: 'running', startedAt: new Date() };
+            }
+            if (jobName === 'PersonalDiscovery' && isPersonalUpdating) {
+                return { name: jobName, status: 'running', startedAt: new Date() };
+            }
+
+            return latest || { name: jobName, status: 'idle', startedAt: null, completedAt: null };
+        }));
+
+        res.json(statuses);
+    } catch (error) {
+        console.error("Failed to get job status:", error);
+        res.status(500).json({ error: "Failed to get job status" });
+    }
 });
 
 // POST /api/jobs/discover - Trigger global discovery (legacy)
@@ -27,8 +59,9 @@ router.post("/discover", requirePermission(PERMISSIONS.ADMIN), async (req, res) 
         return res.status(400).json({ error: "Discovery is already running" });
     }
 
-    // Run in background
-    updateDiscoveryCache().catch(err => console.error("Manual discovery failed:", err));
+    // Run in background via job wrapper
+    runJob('DiscoveryRefresh', updateDiscoveryCache)
+        .catch(err => console.error("Manual discovery failed:", err));
 
     res.json({ message: "Global discovery started" });
 });
@@ -39,8 +72,9 @@ router.post("/refresh-discovery", requirePermission(PERMISSIONS.ADMIN), async (r
         return res.status(400).json({ error: "Discovery is already running" });
     }
 
-    // Run in background
-    updateDiscoveryCache().catch(err => console.error("Discovery refresh failed:", err));
+    // Run in background via job wrapper
+    runJob('DiscoveryRefresh', updateDiscoveryCache)
+        .catch(err => console.error("Discovery refresh failed:", err));
 
     res.json({ message: "Discovery refresh started", success: true });
 });
@@ -48,13 +82,15 @@ router.post("/refresh-discovery", requirePermission(PERMISSIONS.ADMIN), async (r
 // POST /api/jobs/refresh-navidrome - Trigger Navidrome history sync & personal discovery
 router.post("/refresh-navidrome", requirePermission(PERMISSIONS.ADMIN), async (req, res) => {
     try {
-        // Trigger both history sync and personal recommendations
-        console.log("Manual trigger: Syncing Navidrome history and refreshing recommendations...");
-
-        // Run sequentially or parallel? 
-        // Sync history first, then generate recommendations based on new history.
-        await syncNavidromeHistory();
-        refreshPersonalDiscoveryForAllUsers().catch(err => console.error("Manual personal discovery failed:", err));
+        // Run in background via job wrapper
+        // Combines Sync + Personal Refresh into one job logically or run separately?
+        // Let's run as one composite job 'NavidromeSync'
+        runJob('NavidromeSync', async () => {
+            console.log("NavidromeSync: Syncing history...");
+            await syncNavidromeHistory();
+            console.log("NavidromeSync: Refreshing personal discovery...");
+            await refreshPersonalDiscoveryForAllUsers();
+        }).catch(err => console.error("Manual Navidrome job failed:", err));
 
         res.json({ message: "Navidrome history sync and personal discovery started" });
     } catch (error) {
@@ -66,10 +102,9 @@ router.post("/refresh-navidrome", requirePermission(PERMISSIONS.ADMIN), async (r
 // POST /api/jobs/prefetch-images - Trigger image prefetch for discovery + library artists
 router.post("/prefetch-images", requirePermission(PERMISSIONS.ADMIN), async (req, res) => {
     try {
-        console.log("Manual trigger: Prefetching artist images...");
-
         // Run in background
-        prefetchArtistImages().catch(err => console.error("Image prefetch failed:", err));
+        runJob('ImagePrefetch', prefetchArtistImages)
+            .catch(err => console.error("Image prefetch failed:", err));
 
         res.json({ message: "Image prefetch job started", success: true });
     } catch (error) {
@@ -79,3 +114,4 @@ router.post("/prefetch-images", requirePermission(PERMISSIONS.ADMIN), async (req
 });
 
 export default router;
+

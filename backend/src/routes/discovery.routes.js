@@ -16,6 +16,7 @@ import {
 } from "../services/api.js";
 import { requirePermission } from "../middleware/auth.js";
 import { PERMISSIONS } from "../config/permissions.js";
+import { runJob } from "../services/jobs.js";
 
 const router = express.Router();
 
@@ -56,7 +57,9 @@ router.post("/discover/refresh", requirePermission(PERMISSIONS.ADMIN), (req, res
             isUpdating: true,
         });
     }
-    updateDiscoveryCache();
+    runJob('DiscoveryRefresh', updateDiscoveryCache)
+        .catch(err => console.error("Manual discovery failed:", err));
+
     res.json({
         message: "Discovery update started",
         isUpdating: true,
@@ -100,7 +103,9 @@ router.post("/discover/personal/refresh", async (req, res) => {
     try {
         personalRefreshCooldowns.set(userId, now);
         // Force update
-        await generatePersonalDiscovery(userId, null, 20, true);
+        runJob('PersonalDiscovery', () => generatePersonalDiscovery(userId, null, 20, true))
+            .catch(err => console.error("Personal refresh failed:", err));
+
         res.json({ message: "Recommendations refreshed" });
     } catch (error) {
         console.error("Personal refresh error:", error);
@@ -116,7 +121,8 @@ router.post("/discover/personal/refresh-all", requirePermission(PERMISSIONS.ADMI
             isUpdating: true,
         });
     }
-    refreshPersonalDiscoveryForAllUsers();
+    runJob('PersonalDiscovery', refreshPersonalDiscoveryForAllUsers)
+        .catch(err => console.error("Global personal refresh failed:", err));
     res.json({
         message: "Personal discovery update started for all users",
         isUpdating: true,

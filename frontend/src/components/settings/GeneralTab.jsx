@@ -43,6 +43,16 @@ export default function GeneralTab({ settings, handleUpdate }) {
                         />
                     </FormField>
 
+                    <FormField label="Resolved Issue Retention (Days)">
+                        <SettingsInput
+                            type="number"
+                            value={settings.issueRetentionDays || 30}
+                            onChange={(val) => handleUpdate("issueRetentionDays", parseInt(val))}
+                            placeholder="30"
+                            hint="Auto-delete resolved issues after X days. Set to 0 to disable."
+                        />
+                    </FormField>
+
                     <FormField label="Version">
                         <div className="w-full bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl py-3 px-4 text-sm text-gray-500 dark:text-gray-400 font-mono">
                             v{__APP_VERSION__}

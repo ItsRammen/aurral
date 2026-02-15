@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Database, RefreshCw, Trash2, TrendingUp, HardDrive, Image, CheckCircle2, XCircle, Clock } from 'lucide-react';
-import api, { checkHealth, runNavidromeJob, getJobStatus, getSystemStats } from '../../utils/api';
+import api, { checkHealth, runNavidromeJob, getJobStatus, getSystemStats, getNavidromeStatus } from '../../utils/api';
 import { useToast } from '../../contexts/ToastContext';
 import {
     SettingsCard,
@@ -17,8 +17,24 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
     const [runningNavidromeJob, setRunningNavidromeJob] = useState(false);
     const [systemStats, setSystemStats] = useState(null);
     const [loadingStats, setLoadingStats] = useState(true);
+    const [navidromeConnected, setNavidromeConnected] = useState(false);
 
-    useEffect(() => { fetchSystemStats(); }, []);
+    useEffect(() => {
+        fetchSystemStats();
+        checkNavidromeStatus();
+
+        // Poll for job updates every 3 seconds
+        const interval = setInterval(async () => {
+            try {
+                const jobsData = await getJobStatus();
+                setJobs(jobsData);
+            } catch (err) {
+                console.error("Failed to poll jobs:", err);
+            }
+        }, 3000);
+
+        return () => clearInterval(interval);
+    }, []);
 
     const fetchSystemStats = async () => {
         setLoadingStats(true);
@@ -29,6 +45,16 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
             console.error("Failed to fetch system stats:", err);
         } finally {
             setLoadingStats(false);
+        }
+    };
+
+    const checkNavidromeStatus = async () => {
+        try {
+            const status = await getNavidromeStatus();
+            setNavidromeConnected(status.connected);
+        } catch (err) {
+            console.error("Failed to check Navidrome status:", err);
+            setNavidromeConnected(false);
         }
     };
 
@@ -107,6 +133,28 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
         return job?.status || 'idle';
     };
 
+    const handleRunJob = (jobName) => {
+        switch (jobName) {
+            case 'DiscoveryRefresh':
+                handleRefreshDiscovery();
+                break;
+            case 'PersonalDiscovery':
+                handleRefreshPersonal();
+                break;
+            case 'NavidromeSync':
+                handleRunNavidromeJob();
+                break;
+            default:
+                console.warn(`Unknown job: ${jobName}`);
+        }
+    };
+
+    // Filter jobs based on connectivity
+    const visibleJobs = ['DiscoveryRefresh', 'PersonalDiscovery'];
+    if (navidromeConnected) {
+        visibleJobs.push('NavidromeSync');
+    }
+
     return (
         <section className="space-y-6">
             {/* Image Cache Stats */}
@@ -137,30 +185,6 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
             <SettingsCard>
                 <SettingsSectionTitle>System Maintenance</SettingsSectionTitle>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <ActionButton
-                        icon={RefreshCw}
-                        title="Refresh Discovery"
-                        description="Update recommendations and trending data"
-                        onClick={handleRefreshDiscovery}
-                        loading={refreshingDiscovery}
-                        color="primary"
-                    />
-                    <ActionButton
-                        icon={TrendingUp}
-                        title="Update Personal"
-                        description="Recalculate user recommendations"
-                        onClick={handleRefreshPersonal}
-                        loading={refreshingPersonal}
-                        color="purple"
-                    />
-                    <ActionButton
-                        icon={Database}
-                        title="Sync Navidrome"
-                        description="Trigger library sync manually"
-                        onClick={handleRunNavidromeJob}
-                        loading={runningNavidromeJob}
-                        color="blue"
-                    />
                     <ActionButton
                         icon={Trash2}
                         title="Clear Cache"
@@ -202,7 +226,17 @@ export default function SystemTab({ settings, handleUpdate, jobs, setJobs, setHe
                     />
                 </SettingsRow>
 
-                <JobHistoryTable jobs={['DiscoveryRefresh', 'PersonalDiscovery', 'NavidromeSync']} getLastRun={getLastRun} getJobState={getJobState} />
+                <JobHistoryTable
+                    jobs={visibleJobs}
+                    getLastRun={getLastRun}
+                    getJobState={getJobState}
+                    onRun={handleRunJob}
+                    runningJobs={{
+                        DiscoveryRefresh: refreshingDiscovery,
+                        PersonalDiscovery: refreshingPersonal,
+                        NavidromeSync: runningNavidromeJob
+                    }}
+                />
             </SettingsCard>
         </section>
     );
@@ -255,7 +289,7 @@ function ActionButton({ icon: Icon, title, description, onClick, loading, color 
     );
 }
 
-function JobHistoryTable({ jobs, getLastRun, getJobState }) {
+function JobHistoryTable({ jobs, getLastRun, getJobState, onRun, runningJobs }) {
     const statusColors = {
         running: 'bg-blue-100 text-blue-600',
         completed: 'bg-green-100 text-green-600',
@@ -271,20 +305,34 @@ function JobHistoryTable({ jobs, getLastRun, getJobState }) {
                         <th className="py-2 px-4">Job Name</th>
                         <th className="py-2 px-4">Last Run</th>
                         <th className="py-2 px-4">Status</th>
+                        <th className="py-2 px-4 text-right">Actions</th>
                     </tr>
                 </thead>
                 <tbody className="text-sm">
-                    {jobs.map(job => (
-                        <tr key={job} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
-                            <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">{job}</td>
-                            <td className="py-3 px-4 text-gray-500">{getLastRun(job)}</td>
-                            <td className="py-3 px-4">
-                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusColors[getJobState(job)] || statusColors.idle}`}>
-                                    {getJobState(job)}
-                                </span>
-                            </td>
-                        </tr>
-                    ))}
+                    {jobs.map(job => {
+                        const isRunning = runningJobs[job] || getJobState(job) === 'running';
+                        return (
+                            <tr key={job} className="border-b border-gray-50 dark:border-gray-800/50 last:border-0">
+                                <td className="py-3 px-4 font-medium text-gray-900 dark:text-white">{job}</td>
+                                <td className="py-3 px-4 text-gray-500">{getLastRun(job)}</td>
+                                <td className="py-3 px-4">
+                                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${statusColors[getJobState(job)] || statusColors.idle}`}>
+                                        {getJobState(job)}
+                                    </span>
+                                </td>
+                                <td className="py-3 px-4 text-right">
+                                    <button
+                                        onClick={() => onRun(job)}
+                                        disabled={isRunning}
+                                        className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-primary-500 hover:text-white dark:hover:bg-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                        title="Run Job Now"
+                                    >
+                                        <TrendingUp className={`w-4 h-4 ${isRunning ? "animate-spin" : ""}`} />
+                                    </button>
+                                </td>
+                            </tr>
+                        );
+                    })}
                 </tbody>
             </table>
         </div>

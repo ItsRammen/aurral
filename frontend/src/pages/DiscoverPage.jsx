@@ -21,6 +21,7 @@ import {
   api,
   getNavidromeRecommendations,
   getNavidromeStatus,
+  checkHealth
 } from "../utils/api";
 import { useToast } from "../contexts/ToastContext";
 import { useAuth } from "../contexts/AuthContext";
@@ -30,6 +31,7 @@ import ArtistImage from "../components/ArtistImage";
 import ArtistStatusBadge from "../components/ArtistStatusBadge";
 import LoadingSpinner from "../components/LoadingSpinner";
 import TabNav from "../components/TabNav";
+import UnconfiguredOverlay from "../components/UnconfiguredOverlay";
 
 function DiscoverPage() {
   const [data, setData] = useState(null);
@@ -47,6 +49,9 @@ function DiscoverPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { showSuccess, showError } = useToast();
+
+  // System Health State
+  const [lidarrConfigured, setLidarrConfigured] = useState(true);
 
   // Navidrome State
   const [navidromeConnected, setNavidromeConnected] = useState(false);
@@ -95,6 +100,15 @@ function DiscoverPage() {
     const fetchData = async () => {
       setLoading(true);
       try {
+        // Check health first to see if configured
+        const health = await checkHealth();
+        setLidarrConfigured(health.lidarrConfigured);
+
+        if (!health.lidarrConfigured) {
+          setLoading(false);
+          return;
+        }
+
         const [dashboard, naviStatus] = await Promise.all([
           getDashboard(),
           getNavidromeStatus().catch(() => ({ connected: false }))
@@ -123,6 +137,7 @@ function DiscoverPage() {
 
         setLoading(false);
       } catch (err) {
+        console.error("Discovery load error:", err);
         setError(
           err.response?.data?.message || "Failed to load discovery data",
         );
@@ -392,6 +407,8 @@ function DiscoverPage() {
 
   return (
     <div className="space-y-10 pb-12">
+      {!lidarrConfigured && <UnconfiguredOverlay />}
+
       {/* ... Header Section (unchanged) ... */}
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-50 via-white to-primary-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 text-gray-900 dark:text-white shadow-sm dark:shadow-xl border border-primary-100/50 dark:border-transparent">
         {/* ... (background blobs and title logic unchanged) ... */}
@@ -774,36 +791,61 @@ function DiscoverPage() {
                     <Music className="w-6 h-6 mr-3 text-primary-500" />
                     Global Top Tracks
                   </h2>
+                  <button
+                    onClick={() => document.getElementById("global-trending-artists")?.scrollIntoView({ behavior: "smooth" })}
+                    className="text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300 flex items-center"
+                  >
+                    Jump to Artists <TrendingUp className="w-4 h-4 ml-1" />
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                  {globalTopTracks.slice(0, 24).map((track, i) => (
-                    <div key={i} className="group relative flex flex-col w-full min-w-0">
+                <div className="space-y-0.5 bg-white dark:bg-gray-900/50 rounded-2xl p-2 border border-gray-100 dark:border-gray-800">
+                  {globalTopTracks.slice(0, 50).map((track, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 p-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors group"
+                    >
+                      <span className="w-6 text-center font-bold text-sm text-gray-400 dark:text-gray-600 group-hover:text-primary-500">
+                        {i + 1}
+                      </span>
+
                       <div
                         onClick={() => navigate(`/search?q=${encodeURIComponent(track.artist)}&type=artist`)}
-                        className="relative aspect-square mb-3 overflow-hidden rounded-xl bg-gray-200 dark:bg-gray-800 cursor-pointer shadow-sm group-hover:shadow-md transition-all"
+                        className="relative w-9 h-9 flex-shrink-0 cursor-pointer overflow-hidden rounded-md bg-gray-200 dark:bg-gray-700"
                       >
                         <ArtistImage
                           src={track.image}
                           mbid={track.artistMbid}
                           alt={track.name}
-                          className="h-full w-full group-hover:scale-105 transition-transform duration-300 object-cover"
+                          className="h-full w-full object-cover group-hover:scale-105 transition-transform"
                         />
                         <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <PlayCircle className="w-10 h-10 text-white" />
+                          <PlayCircle className="w-4 h-4 text-white" />
                         </div>
                       </div>
-                      <div className="flex flex-col min-w-0">
-                        <h3 className="font-semibold text-gray-900 dark:text-gray-100 truncate">
+
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate leading-tight">
                           {track.name}
                         </h3>
                         <p
-                          onClick={() => navigate(`/search?q=${encodeURIComponent(track.artist)}&type=artist`)}
-                          className="text-sm text-gray-500 dark:text-gray-400 truncate hover:text-primary-500 cursor-pointer"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/search?q=${encodeURIComponent(track.artist)}&type=artist`);
+                          }}
+                          className="text-xs text-gray-500 dark:text-gray-400 truncate hover:text-primary-500 cursor-pointer"
                         >
                           {track.artist}
                         </p>
                       </div>
+
+                      <button
+                        onClick={() => navigate(`/search?q=${encodeURIComponent(track.name + " " + track.artist)}`)}
+                        className="p-1.5 text-gray-400 hover:text-primary-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                        title="Search Track"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   ))}
                 </div>
@@ -811,7 +853,7 @@ function DiscoverPage() {
             )}
 
             {globalTop.length > 0 && (
-              <section>
+              <section id="global-trending-artists" className="scroll-mt-24">
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center">
                     <TrendingUp className="w-6 h-6 mr-3 text-primary-500" />

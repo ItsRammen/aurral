@@ -4,6 +4,7 @@ import { syncNavidromeHistory } from "./navidrome.js";
 import { prefetchArtistImages } from "./imageProxy.js";
 import { loadSettings } from "./api.js";
 import { startDownloadTracker } from "./downloadTracker.js";
+import { runJob } from "./jobs.js";
 
 let discoveryInterval = null;
 
@@ -12,7 +13,9 @@ export const startDiscoverySchedule = async () => {
     const settings = await loadSettings();
     const hours = settings.discoveryRefreshInterval || 24;
     console.log(`Scheduling discovery refresh every ${hours} hours.`);
-    discoveryInterval = setInterval(updateDiscoveryCache, hours * 60 * 60 * 1000);
+    discoveryInterval = setInterval(() => {
+        runJob('DiscoveryRefresh', updateDiscoveryCache).catch(e => console.error("Scheduled discovery refresh failed:", e));
+    }, hours * 60 * 60 * 1000);
 };
 
 export const restartDiscoverySchedule = () => {
@@ -31,7 +34,7 @@ export const initScheduler = async () => {
             const lastUpdated = config?.discoveryLastRun;
             const twentyFourHoursAgo = Date.now() - 24 * 60 * 60 * 1000;
             if (!lastUpdated || new Date(lastUpdated).getTime() < twentyFourHoursAgo) {
-                updateDiscoveryCache(); // This updates discoveryLastRun in DB
+                runJob('DiscoveryRefresh', updateDiscoveryCache).catch(e => console.error("Initial discovery refresh failed:", e));
             } else {
                 console.log(
                     `Discovery cache is fresh (last updated ${lastUpdated}). Skipping initial update.`,
@@ -42,23 +45,58 @@ export const initScheduler = async () => {
         }
     }, 5000);
 
-    setTimeout(syncNavidromeHistory, 10000);
-    setInterval(syncNavidromeHistory, 30 * 60 * 1000);
+    setTimeout(() => runJob('NavidromeSync', syncNavidromeHistory), 10000);
+    setInterval(() => runJob('NavidromeSync', syncNavidromeHistory), 30 * 60 * 1000);
 
-    setInterval(refreshPersonalDiscoveryForAllUsers, 1 * 60 * 60 * 1000);
-    setTimeout(refreshPersonalDiscoveryForAllUsers, 30000);
+    setInterval(() => runJob('PersonalDiscovery', refreshPersonalDiscoveryForAllUsers), 1 * 60 * 60 * 1000);
+    setTimeout(() => runJob('PersonalDiscovery', refreshPersonalDiscoveryForAllUsers), 30000);
 
     // Image prefetch - run after discovery cache is loaded, then hourly
     setTimeout(() => {
-        prefetchArtistImages().catch(err => console.error("Startup image prefetch failed:", err));
+        runJob('ImagePrefetch', prefetchArtistImages).catch(err => console.error("Startup image prefetch failed:", err));
     }, 60000); // 1 minute after startup
     setInterval(() => {
-        prefetchArtistImages().catch(err => console.error("Scheduled image prefetch failed:", err));
+        runJob('ImagePrefetch', prefetchArtistImages).catch(err => console.error("Scheduled image prefetch failed:", err));
     }, 6 * 60 * 60 * 1000); // Every 6 hours
 
     // Download tracker - monitors queue and handles stuck downloads
     setTimeout(() => {
         startDownloadTracker().catch(err => console.error("Download tracker failed to start:", err));
     }, 15000); // 15 seconds after startup
+
+    // Retention Policy: Cleanup resolved issues daily
+    setTimeout(cleanupResolvedIssues, 60000); // Run once on startup after 1 min
+    setInterval(cleanupResolvedIssues, 24 * 60 * 60 * 1000); // Run daily
+};
+
+import { Op } from "sequelize";
+import Issue from "../models/Issue.js";
+
+// Cleanup resolved issues based on retention policy
+export const cleanupResolvedIssues = async () => {
+    try {
+        const settings = await loadSettings();
+        const retentionDays = settings.issueRetentionDays || 30; // Default 30 days
+
+        if (retentionDays <= 0) return; // 0 or negative means disable cleanup (or keep forever)
+
+        const cutoffDate = new Date();
+        cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+        const deletedCount = await Issue.destroy({
+            where: {
+                status: 'resolved',
+                updatedAt: {
+                    [Op.lt]: cutoffDate
+                }
+            }
+        });
+
+        if (deletedCount > 0) {
+            console.log(`[Scheduler] Cleaned up ${deletedCount} resolved issues older than ${retentionDays} days.`);
+        }
+    } catch (error) {
+        console.error("[Scheduler] Failed to cleanup resolved issues:", error);
+    }
 };
 

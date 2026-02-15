@@ -55,6 +55,10 @@ const AppConfig = sequelize.define('AppConfig', {
         type: DataTypes.INTEGER,
         defaultValue: 24
     },
+    issueRetentionDays: {
+        type: DataTypes.INTEGER,
+        defaultValue: 30
+    },
 
     proxyTrusted: {
         type: DataTypes.BOOLEAN,
